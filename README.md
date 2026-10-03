@@ -10,9 +10,9 @@ Dictate text, start a voice chat, confirm prompts, switch chats and open an eigh
 
 ## See it in 32 seconds
 
-[![Animated explanation: dictate with the back button, start voice in the current chat, confirm with Enter, switch chats with the thumb wheel and open the ring with the haptic thumb pad.](docs/media/codex-mx-master-4-demo.gif)](https://github.com/patrickschiller/codex-mx-master-4/releases/download/v0.1.3/codex-mx-master-4-demo.mp4)
+[![Animated explanation: dictate with the back button, start voice in the current chat, confirm with Enter, switch chats with the thumb wheel and open the ring with the haptic thumb pad.](docs/media/codex-mx-master-4-demo-en.gif)](https://github.com/patrickschiller/codex-mx-master-4/releases/download/v0.1.3/codex-mx-master-4-demo-en.mp4)
 
-[Download the MP4 video](https://github.com/patrickschiller/codex-mx-master-4/releases/download/v0.1.3/codex-mx-master-4-demo.mp4) · [English transcript and video details](docs/demo.md)
+[Download the MP4 video](https://github.com/patrickschiller/codex-mx-master-4/releases/download/v0.1.3/codex-mx-master-4-demo-en.mp4) · [English transcript and video details](docs/demo.md)
 
 A 32-second animated explanation in English, without sound. The mouse and app are simplified illustrations; the demo contains no private chats or recorded hardware test.
 

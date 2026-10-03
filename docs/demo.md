@@ -1,6 +1,6 @@
 # The mouse controls in 32 seconds
 
-[Download the MP4 video](https://github.com/patrickschiller/codex-mx-master-4/releases/download/v0.1.3/codex-mx-master-4-demo.mp4) · [View the animated GIF](media/codex-mx-master-4-demo.gif) · [Installation guide in German](installation-de.md)
+[Download the MP4 video](https://github.com/patrickschiller/codex-mx-master-4/releases/download/v0.1.3/codex-mx-master-4-demo-en.mp4) · [View the animated GIF](media/codex-mx-master-4-demo-en.gif) · [Installation guide in German](installation-de.md)
 
 The animation explains the MX Master 4 controls for Codex on macOS. All captions are in English, and the video has no sound. The mouse and app are simplified illustrations; the video contains no private chats or recorded hardware test.
 
@@ -50,8 +50,8 @@ From the project directory:
 
 ```sh
 python3 tools/render_demo.py \
-  --mp4 ../codex-mx-master-4-demo.mp4 \
-  --gif docs/media/codex-mx-master-4-demo.gif
+  --mp4 ../codex-mx-master-4-demo-en.mp4 \
+  --gif docs/media/codex-mx-master-4-demo-en.gif
 ```
 
 The MP4 is 1280 × 720 pixels at 24 frames per second, encoded as H.264 with `yuv420p`. The GIF preview is 960 × 540 pixels at 12 frames per second. Both last 32 seconds. Use `--previews /path/to/preview-directory` to save seven scene images for visual inspection. The README displays the GIF; the linked MP4 is an asset on release v0.1.3.
