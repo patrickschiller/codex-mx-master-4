@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 BINDINGS: dict[str, str] = {
+    "globalDictationSingleTap": "Ctrl+Shift+D",
     "composer.togglePlanMode": "Ctrl+Alt+Shift+P",
     "composer.toggleFastMode": "Ctrl+Alt+Shift+F",
     "forkThread": "Ctrl+Alt+Shift+B",
@@ -58,7 +59,7 @@ def _validate(existing: Any) -> list[dict[str, Any]]:
 
 
 def build_keybindings(existing: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Preserve other commands and replace just our six target overrides.
+    """Preserve other commands and replace the six ring and one dictation overrides.
 
     Refuse collisions instead of clearing or changing unrelated shortcuts.
     This function never changes its input objects.

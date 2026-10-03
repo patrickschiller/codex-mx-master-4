@@ -100,10 +100,11 @@ class Plan:
     database: Optional[DatabaseChange] = None
     summary: list = field(default_factory=list)
     remove_empty_directories: list = field(default_factory=list)
+    additional_databases: list = field(default_factory=list)
 
     @property
     def changed(self):
-        if self.files or self.database:
+        if self.files or self.database or self.additional_databases:
             return True
         return any(path.is_dir() and not path.is_symlink() and not any(path.iterdir())
                    for path in self.remove_empty_directories)
@@ -127,6 +128,28 @@ def _file_record(change):
             "after_sha256": _sha(change.after), "label": change.label}
 
 
+def _database_record(change):
+    return {"path": str(change.path), "row_id": change.row_id,
+            "before": _b64(change.before), "after": _b64(change.after)}
+
+
+def _database_bytes(row):
+    if row is None:
+        return None
+    return row[0].encode("utf-8") if isinstance(row[0], str) else row[0]
+
+
+def _database_changes(plan):
+    changes = ([plan.database] if plan.database else []) + list(plan.additional_databases)
+    paths = [Path(change.path).resolve() for change in changes]
+    if len(set(paths)) != len(paths):
+        raise ConflictError("A plan must not contain more than one change to the same database")
+    names = (["settings.db"] if plan.database else []) + [Path(change.path).name for change in plan.additional_databases]
+    if len(set(names)) != len(names) or "manifest.json" in names:
+        raise ConflictError("Database backup filenames must be distinct")
+    return list(zip(changes, names))
+
+
 def _prune_empty(paths):
     for path in sorted(set(map(Path, paths)), key=lambda p: len(p.parts), reverse=True):
         if path.is_symlink():
@@ -140,9 +163,16 @@ def _prune_empty(paths):
 
 
 def apply(plan, backup_root):
-    """Commit a prepared plan; restore written files if any operation fails."""
+    """Commit a plan, compensating our earlier commits if a later write fails.
+
+    Separate SQLite files cannot share an atomic COMMIT in WAL mode. Hold a
+    write lock on every database and validate every document before changing
+    managed data, then undo only our committed documents under fresh locks on
+    failure. Independent edits made after a commit are retained as conflicts.
+    """
     if not plan.changed:
         return None
+    databases = _database_changes(plan)
     for change in plan.files:
         if read_optional(change.path) != change.before:
             raise ConflictError("Changed since preview: {}".format(change.path))
@@ -160,26 +190,34 @@ def apply(plan, backup_root):
                 created_directories.add(parent)
                 parent = parent.parent
     manifest["created_directories"] = [str(path) for path in sorted(created_directories)]
-    connection = None
-    committed = False
+    connections = []
     written = []
     try:
-        if plan.database:
-            change = plan.database
+        for change, name in databases:
             connection = _connect(change.path)
-            # sqlite3.backup includes WAL frames; copying settings.db alone does not.
-            with closing(sqlite3.connect(backup / "settings.db")) as snapshot:
+            state = {"change": change, "connection": connection, "committed": False,
+                     "commit_attempted": False}
+            connections.append(state)
+            # sqlite3.backup includes WAL frames; copying either main DB file
+            # alone can discard active Logitech settings or Smart Actions.
+            with closing(sqlite3.connect(backup / name)) as snapshot:
                 connection.backup(snapshot)
-            os.chmod(backup / "settings.db", 0o600)
-            connection.execute("BEGIN IMMEDIATE")
+            os.chmod(backup / name, 0o600)
+        # Take locks in a stable order, but retain primary/additional order for
+        # commits and the manifest. No managed writes occur until all CAS pass.
+        for state in sorted(connections, key=lambda item: str(Path(item["change"].path).resolve())):
+            state["connection"].execute("BEGIN IMMEDIATE")
+        for state in connections:
+            change, connection = state["change"], state["connection"]
             actual = connection.execute("SELECT file FROM data WHERE _id=?", (change.row_id,)).fetchone()
             if actual is None:
-                raise ConflictError("The settings row disappeared")
-            actual_bytes = actual[0].encode("utf-8") if isinstance(actual[0], str) else actual[0]
-            if actual_bytes != change.before:
-                raise ConflictError("Logitech settings changed since preview")
-            manifest["database"] = {"path": str(change.path), "row_id": change.row_id,
-                                    "before": _b64(change.before), "after": _b64(change.after)}
+                raise ConflictError("The settings row disappeared: {}".format(change.path))
+            if _database_bytes(actual) != change.before:
+                raise ConflictError("Logitech database changed since preview: {}".format(change.path))
+        if plan.database:
+            manifest["database"] = _database_record(plan.database)
+        if plan.additional_databases:
+            manifest["additional_databases"] = [_database_record(change) for change in plan.additional_databases]
         atomic_write(backup / "manifest.json", encode_json(manifest))
         for change in plan.files:
             # Check again immediately before writing each individual file.
@@ -187,43 +225,64 @@ def apply(plan, backup_root):
                 raise ConflictError("Changed during installation: {}".format(change.path))
             atomic_write(change.path, change.after)
             written.append(change)
-        if plan.database:
-            change = plan.database
+        for state in connections:
+            change, connection = state["change"], state["connection"]
             cursor = connection.execute("UPDATE data SET file=? WHERE _id=?", (change.after, change.row_id))
             actual = connection.execute("SELECT file FROM data WHERE _id=?", (change.row_id,)).fetchone()
-            if cursor.rowcount != 1 or not actual or actual[0] != change.after:
-                raise ConflictError("The settings database did not retain the planned document")
+            if cursor.rowcount != 1 or _database_bytes(actual) != change.after:
+                raise ConflictError("The database did not retain the planned document: {}".format(change.path))
         for change in written:
             if read_optional(change.path) != change.after:
                 raise ConflictError("A managed file changed before commit: {}".format(change.path))
-        if plan.database:
+        for state in connections:
+            connection = state["connection"]
+            state["commit_attempted"] = True
             connection.commit()
-            committed = True
+            state["committed"] = True
         _prune_empty(plan.remove_empty_directories)
         manifest["status"] = "applied"
         atomic_write(backup / "manifest.json", encode_json(manifest))
         return backup
     except Exception as original_error:
         rollback_conflicts = []
-        if connection:
-            connection.rollback()
-        # If a commit succeeded but updating the manifest failed, revert the row too.
-        if committed and connection and plan.database:
-            change = plan.database
+        for state in connections:
+            change, connection = state["change"], state["connection"]
+            # A wrapper or I/O error may raise after COMMIT actually completed.
+            # The transaction state distinguishes that from a still-pending
+            # transaction, whose UPDATE can be undone with ordinary rollback.
+            if state["commit_attempted"] and not connection.in_transaction:
+                state["committed"] = True
+            try:
+                connection.rollback()
+            except sqlite3.Error:
+                rollback_conflicts.append(str(change.path))
+        # Revert committed documents only if they still equal our own write.
+        # A failure in one database must not block another DB or file rollback.
+        for state in reversed(connections):
+            if not state["committed"]:
+                continue
+            change, connection = state["change"], state["connection"]
             try:
                 connection.execute("BEGIN IMMEDIATE")
                 actual = connection.execute("SELECT file FROM data WHERE _id=?", (change.row_id,)).fetchone()
-                if actual and actual[0] == change.after:
+                actual_bytes = _database_bytes(actual)
+                if actual_bytes == change.after:
                     connection.execute("UPDATE data SET file=? WHERE _id=?", (change.before, change.row_id))
+                    actual = connection.execute("SELECT file FROM data WHERE _id=?", (change.row_id,)).fetchone()
+                    if _database_bytes(actual) != change.before:
+                        raise ConflictError("The database did not retain its reverted document")
                     connection.commit()
-                elif not actual or actual[0] != change.before:
+                elif actual_bytes != change.before:
                     rollback_conflicts.append(str(change.path))
                     connection.rollback()
                 else:
                     connection.rollback()
-            except sqlite3.Error:
+            except (sqlite3.Error, ConflictError):
                 rollback_conflicts.append(str(change.path))
-                connection.rollback()
+                try:
+                    connection.rollback()
+                except sqlite3.Error:
+                    pass
         for change in reversed(written):
             try:
                 if read_optional(change.path) == change.after:
@@ -242,8 +301,8 @@ def apply(plan, backup_root):
         _prune_empty(created_directories)
         raise
     finally:
-        if connection:
-            connection.close()
+        for state in connections:
+            state["connection"].close()
 
 
 _MISSING = object()
@@ -379,14 +438,25 @@ def restore_plan(backup):
         restored = _restore_file(before, after, current, path)
         if current != restored:
             plan.files.append(FileChange(path, current, restored, record["label"]))
-    if "database" in manifest:
-        record = manifest["database"]
+    records = [(True, manifest["database"])] if "database" in manifest else []
+    additional = manifest.get("additional_databases", [])
+    if not isinstance(additional, list):
+        raise ConflictError("Backup additional_databases must be a list")
+    records.extend((False, record) for record in additional)
+    for primary, record in records:
         path = Path(record["path"])
+        if not path.is_absolute():
+            raise ConflictError("Backup database paths must be absolute")
         row_id, raw, current = read_database(path)
         if row_id != record["row_id"]:
-            raise ConflictError("The settings row identity changed")
+            raise ConflictError("The settings row identity changed: {}".format(path))
         restored = restore_value(json.loads(_unb64(record["before"])),
-                                 json.loads(_unb64(record["after"])), current)
+                                 json.loads(_unb64(record["after"])), current, str(path))
         if restored != current:
-            plan.database = DatabaseChange(path, row_id, raw, encode_json(restored))
+            change = DatabaseChange(path, row_id, raw, encode_json(restored))
+            if primary:
+                plan.database = change
+            else:
+                plan.additional_databases.append(change)
+    _database_changes(plan)
     return plan

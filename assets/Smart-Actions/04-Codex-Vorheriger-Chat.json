@@ -26,7 +26,9 @@
           "modifiers": [
             227,
             226
-          ]
+          ],
+          "displayCharacter": "Left",
+          "virtualKeyId": "VK_LEFT"
         },
         "actionName": "⌘⌥←",
         "onboardable": false

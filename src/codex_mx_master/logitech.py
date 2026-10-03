@@ -10,11 +10,28 @@ import uuid
 import zipfile
 
 BUNDLE_ID = "com.openai.codex"
+VOICE_MACRO_ID = "e9c7a15a-e6c8-43ce-912a-4014a0d16af2"
+VOICE_MACRO_NAME = "Codex – Neuer Sprachchat"
 SETTINGS_SCHEMA = 26
 _SLOT_RE = re.compile(r"^(mx-master-4-[^_]+)_(.+)$")
 _GUID_RE = re.compile(r"^[A-Fa-f0-9]{32}$")
 _ACTION_RE = re.compile(r"^\$@Generic___@ProfileAction___[A-Fa-f0-9]{32}$")
 _TARGETS = ("c86", "c83", "c416", "c82", "thumb_wheel_adapter", "c195")
+_KEY_IDENTITIES = {
+    4: ("A", "VK_A"), 7: ("D", "VK_D"), 17: ("N", "VK_N"),
+    25: ("V", "VK_V"), 40: ("⏎Return", ""),
+    41: ("Escape", "VK_ESCAPE"), 79: ("Right", "VK_RIGHT"), 80: ("Left", "VK_LEFT"),
+}
+
+
+def key_record(code: int, modifiers: list[int]) -> dict:
+    """HID events plus the key identity expected by the native shortcut editor."""
+    try:
+        display, virtual = _KEY_IDENTITIES[code]
+    except KeyError as error:
+        raise ValueError("Unsupported shortcut HID usage") from error
+    return {"code": code, "modifiers": list(modifiers),
+            "displayCharacter": display, "virtualKeyId": virtual}
 
 
 def _keyboard_card(label: str, code: int, modifiers: list[int], *, nested: bool = False) -> dict:
@@ -23,9 +40,10 @@ def _keyboard_card(label: str, code: int, modifiers: list[int], *, nested: bool 
         "id": "inner_card_keyboard_shortcut" if nested else "card_global_presets_keyboard_shortcut",
         "name": "ASSIGNMENT_NAME_KEYBOARD_SHORTCUT", "attribute": "MACRO_PLAYBACK",
         "readOnly": False, "continuous": False, "taskId": 65536 if nested else 73,
-        "macro": {"type": "KEYSTROKE", "keystroke": {"code": code, "modifiers": modifiers},
+        "macro": {"type": "KEYSTROKE", "keystroke": key_record(code, modifiers),
                   "onboardable": False, "actionName": label, "icon": ""},
-        "nestedCards": {}, "tags": ["PRESET_TAG_KEY_OR_BUTTON", "PRESET_KEYBOARD_FUNCTIONS"],
+        "nestedCards": {}, "tags": (["PRESET_TAG_KEY_OR_BUTTON"] if nested else
+                                    ["PRESET_TAG_KEY_OR_BUTTON", "PRESET_TAG_MACROS_UNSUPPORTED", "PRESET_KEYBOARD_FUNCTIONS"]),
     }
 
 
@@ -46,22 +64,46 @@ def _wheel_card() -> dict:
 
 
 def _new_voice_card() -> dict:
-    # Native Macro.Sequence on the same MACRO_PLAYBACK card layer. The backend
-    # dispatches SEQUENCE (8) to sequence_playstate without a macros.db reference.
-    card = _keyboard_card("⌘N → 750 ms → ⌃⇧V", 17, [227])
-    card["macro"] = {
-        "type": "SEQUENCE", "onboardable": False, "actionName": "⌘N → 750 ms → ⌃⇧V",
-        "sequence": {
-            "simpleSequence": {"interruptible": False, "components": [
-                {"type": "KEYSTROKE", "keystroke": {"code": 17, "modifiers": [227]}},
-                {"type": "DELAY", "delay": {"durationMs": 750}},
-                {"type": "KEYSTROKE", "keystroke": {"code": 25, "modifiers": [224, 225]}},
-            ]},
-            "useDefaultDelay": False, "useSimpleActions": True,
-            "useRepeatActions": False, "useToggleActions": False,
-        },
-    }
-    return card
+    # Native Smart Action references use the MacroInfo id as the Card id.
+    # The keyboard-shortcut preset does not support an inline SEQUENCE editor.
+    return {"id": VOICE_MACRO_ID, "name": VOICE_MACRO_NAME, "attribute": "MACRO_REF",
+            "readOnly": True, "executeOnProfileChange": True, "selectedNestedCard": "",
+            "nestedCards": {}, "nestedCardsOrder": [], "tags": [], "taskId": 0,
+            "applicationId": ""}
+
+
+def desired_macro_store(existing: dict, voice_info: dict) -> dict:
+    """Merge the one native Smart Action referenced by the gesture assignment."""
+    if not isinstance(existing, dict) or not isinstance(existing.get("macro_infos"), dict):
+        raise ValueError("Unsupported native Smart Actions database document")
+    if not isinstance(voice_info, dict) or voice_info.get("id") != VOICE_MACRO_ID:
+        raise ValueError("Unexpected new-voice Smart Action identity")
+    if voice_info.get("platform") != "OSX" or voice_info.get("name") != VOICE_MACRO_NAME:
+        raise ValueError("Unexpected new-voice Smart Action platform or name")
+    desired = copy.deepcopy(existing)
+    collection = desired["macro_infos"]
+    if set(collection) - {"macroInfos"}:
+        raise ValueError("Unsupported native Smart Actions collection fields")
+    infos = collection.get("macroInfos", [])
+    if not isinstance(infos, list) or any(not isinstance(info, dict) or not isinstance(info.get("id"), str) for info in infos):
+        raise ValueError("Invalid native Smart Action list")
+    if len({info["id"] for info in infos}) != len(infos):
+        raise ValueError("Duplicate native Smart Action identities")
+    matches = [info for info in infos if info["id"] == VOICE_MACRO_ID]
+    if not matches:
+        infos.append(copy.deepcopy(voice_info))
+        collection["macroInfos"] = infos
+    else:
+        # Preserve an already imported action's delay and independent edits.
+        # Add the native key identities missing from the first release assets.
+        for card in matches[0].get("cards", []):
+            macro = card.get("macro", {})
+            if macro.get("type") == "KEYSTROKE":
+                key = macro.get("keystroke", {})
+                identity = key_record(key.get("code"), key.get("modifiers", []))
+                key.setdefault("displayCharacter", identity["displayCharacter"])
+                key.setdefault("virtualKeyId", identity["virtualKeyId"])
+    return desired
 
 
 def _ring_card() -> dict:
@@ -126,6 +168,7 @@ def desired_settings(existing: dict, app_path: Path) -> tuple[dict, dict]:
         keys.append(profile_key)
     if not isinstance(profile.get("assignments"), list):
         raise ValueError("Invalid Codex assignments")
+    profile["activeForApplication"] = True
     native = {}
     for assignment in base["assignments"]:
         if isinstance(assignment, dict) and isinstance(assignment.get("slotId"), str):

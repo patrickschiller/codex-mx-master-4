@@ -2,6 +2,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest import mock
 
@@ -15,8 +16,8 @@ class TransactionTests(unittest.TestCase):
         self.root = Path(temporary.name).resolve()
         self.backups = self.root / "backups"
 
-    def make_database(self, value, *, wal=False):
-        path = self.root / "settings.db"
+    def make_database(self, value, *, wal=False, name="settings.db"):
+        path = self.root / name
         connection = sqlite3.connect(path)
         self.addCleanup(connection.close)
         if wal:
@@ -47,6 +48,200 @@ class TransactionTests(unittest.TestCase):
         self.assertEqual(self.database_value(backup / "settings.db"), current)
         self.assertEqual(self.database_value(path), {"state": "installed"})
         self.assertEqual(json.loads((backup / "manifest.json").read_bytes())["status"], "applied")
+
+    def test_two_database_backups_include_both_uncheckpointed_wal_documents(self):
+        settings, settings_writer = self.make_database({"state": "old-settings"}, wal=True)
+        macros, macros_writer = self.make_database({"state": "old-macros"}, wal=True, name="macros.db")
+        before = [{"state": "live-settings", "foreign": 2}, {"state": "live-macros", "foreign": 3}]
+        for path, writer, current in zip((settings, macros), (settings_writer, macros_writer), before):
+            writer.execute("UPDATE data SET file=? WHERE _id=1", (tx.encode_json(current),))
+            writer.commit()
+            self.assertGreater(Path(str(path) + "-wal").stat().st_size, 0)
+        desired = [{"state": "installed-settings", "foreign": 2}, {"state": "installed-macros", "foreign": 3}]
+        plan = tx.Plan(database=self.plan_for_database(settings, desired[0]),
+                       additional_databases=[self.plan_for_database(macros, desired[1])])
+        backup = tx.apply(plan, self.backups)
+        for path, old, new in zip((settings, macros), before, desired):
+            self.assertEqual(self.database_value(backup / path.name), old)
+            self.assertEqual(self.database_value(path), new)
+            self.assertEqual((backup / path.name).stat().st_mode & 0o777, 0o600)
+        manifest = json.loads((backup / "manifest.json").read_bytes())
+        self.assertEqual(manifest["status"], "applied")
+        self.assertEqual(manifest["additional_databases"][0]["path"], str(macros))
+
+    def test_second_database_cas_conflict_prevents_primary_and_file_writes(self):
+        settings, _ = self.make_database({"managed": 0})
+        macros, writer = self.make_database({"managed": 0}, name="macros.db")
+        path = self.root / "profile.json"
+        path.write_bytes(b"before")
+        plan = tx.Plan(files=[tx.FileChange(path, b"before", b"after")],
+                       database=self.plan_for_database(settings, {"managed": 1}),
+                       additional_databases=[self.plan_for_database(macros, {"managed": 1})])
+        foreign = {"managed": 8, "independent": True}
+        writer.execute("UPDATE data SET file=? WHERE _id=1", (tx.encode_json(foreign),))
+        writer.commit()
+        with self.assertRaises(tx.ConflictError):
+            tx.apply(plan, self.backups)
+        self.assertEqual(self.database_value(settings), {"managed": 0})
+        self.assertEqual(self.database_value(macros), foreign)
+        self.assertEqual(path.read_bytes(), b"before")
+
+    def test_all_database_write_locks_are_held_before_any_managed_write(self):
+        settings, _ = self.make_database({"managed": 0})
+        macros, _ = self.make_database({"managed": 0}, name="macros.db")
+        path = self.root / "profile.json"
+        path.write_bytes(b"before")
+        connections = []
+        real_write = tx.atomic_write
+
+        class ObservedConnection(sqlite3.Connection):
+            def execute(connection, sql, *args, **kwargs):
+                if sql.startswith("UPDATE data SET file"):
+                    self.assertEqual(len(connections), 2)
+                    self.assertTrue(all(other.in_transaction for other in connections))
+                return super().execute(sql, *args, **kwargs)
+
+        def connect(database):
+            connection = sqlite3.connect(database, factory=ObservedConnection)
+            connections.append(connection)
+            return connection
+
+        def write(target, value):
+            if Path(target) == path and value == b"after":
+                self.assertEqual(len(connections), 2)
+                self.assertTrue(all(connection.in_transaction for connection in connections))
+            real_write(target, value)
+
+        plan = tx.Plan(files=[tx.FileChange(path, b"before", b"after")],
+                       database=self.plan_for_database(settings, {"managed": 1}),
+                       additional_databases=[self.plan_for_database(macros, {"managed": 1})])
+        with mock.patch.object(tx, "_connect", side_effect=connect), \
+                mock.patch.object(tx, "atomic_write", side_effect=write):
+            tx.apply(plan, self.backups)
+        self.assertEqual(self.database_value(settings), {"managed": 1})
+        self.assertEqual(self.database_value(macros), {"managed": 1})
+
+    def test_second_database_commit_failure_compensates_primary_commit_and_files(self):
+        settings, _ = self.make_database({"managed": 0})
+        macros, _ = self.make_database({"managed": 0}, name="macros.db")
+        path = self.root / "profile.json"
+        path.write_bytes(b"before")
+
+        class FailedCommitConnection(sqlite3.Connection):
+            def commit(connection):
+                raise sqlite3.OperationalError("simulated macros commit failure")
+
+        def connect(database):
+            factory = FailedCommitConnection if Path(database) == macros else sqlite3.Connection
+            return sqlite3.connect(database, factory=factory)
+
+        plan = tx.Plan(files=[tx.FileChange(path, b"before", b"after")],
+                       database=self.plan_for_database(settings, {"managed": 1}),
+                       additional_databases=[self.plan_for_database(macros, {"managed": 1})])
+        with mock.patch.object(tx, "_connect", side_effect=connect), self.assertRaises(sqlite3.OperationalError):
+            tx.apply(plan, self.backups)
+        self.assertEqual(self.database_value(settings), {"managed": 0})
+        self.assertEqual(self.database_value(macros), {"managed": 0})
+        self.assertEqual(path.read_bytes(), b"before")
+        backup = next(self.backups.iterdir())
+        self.assertEqual(json.loads((backup / "manifest.json").read_bytes())["status"], "failed-and-reverted")
+
+    def test_second_commit_failure_preserves_foreign_edit_to_committed_primary(self):
+        settings, writer = self.make_database({"managed": 0}, wal=True)
+        macros, _ = self.make_database({"managed": 0}, wal=True, name="macros.db")
+        path = self.root / "profile.json"
+        path.write_bytes(b"before")
+        foreign = {"managed": 9, "independent": True}
+
+        class FailedCommitConnection(sqlite3.Connection):
+            def commit(connection):
+                writer.execute("UPDATE data SET file=? WHERE _id=1", (tx.encode_json(foreign),))
+                writer.commit()
+                raise sqlite3.OperationalError("simulated later commit failure")
+
+        def connect(database):
+            factory = FailedCommitConnection if Path(database) == macros else sqlite3.Connection
+            return sqlite3.connect(database, factory=factory)
+
+        plan = tx.Plan(files=[tx.FileChange(path, b"before", b"after")],
+                       database=self.plan_for_database(settings, {"managed": 1}),
+                       additional_databases=[self.plan_for_database(macros, {"managed": 1})])
+        with mock.patch.object(tx, "_connect", side_effect=connect), self.assertRaises(tx.ConflictError):
+            tx.apply(plan, self.backups)
+        self.assertEqual(self.database_value(settings), foreign)
+        self.assertEqual(self.database_value(macros), {"managed": 0})
+        self.assertEqual(path.read_bytes(), b"before")
+        manifest = json.loads((next(self.backups.iterdir()) / "manifest.json").read_bytes())
+        self.assertEqual(manifest["status"], "failed-with-conflicts")
+        self.assertIn(str(settings), manifest["rollback_conflicts"])
+
+    def test_manifest_failure_reverts_both_committed_databases(self):
+        settings, _ = self.make_database({"managed": 0})
+        macros, _ = self.make_database({"managed": 0}, name="macros.db")
+        real_write = tx.atomic_write
+
+        def fail_applied_manifest(path, value):
+            if Path(path).name == "manifest.json" and json.loads(value)["status"] == "applied":
+                raise OSError("simulated final manifest failure")
+            return real_write(path, value)
+
+        plan = tx.Plan(database=self.plan_for_database(settings, {"managed": 1}),
+                       additional_databases=[self.plan_for_database(macros, {"managed": 1})])
+        with mock.patch.object(tx, "atomic_write", side_effect=fail_applied_manifest), self.assertRaises(OSError):
+            tx.apply(plan, self.backups)
+        self.assertEqual(self.database_value(settings), {"managed": 0})
+        self.assertEqual(self.database_value(macros), {"managed": 0})
+
+    def test_restore_both_databases_preserves_later_independent_edits(self):
+        settings_old = {"managed": 0, "independent": 0}
+        settings_new = {"managed": 1, "independent": 0}
+        macros_old = {"macros": [{"id": "other", "name": "original"}]}
+        macros_new = {"macros": macros_old["macros"] + [{"id": "managed", "name": "Codex voice"}]}
+        settings, settings_writer = self.make_database(settings_old)
+        macros, macros_writer = self.make_database(macros_old, name="macros.db")
+        backup = tx.apply(tx.Plan(database=self.plan_for_database(settings, settings_new),
+                                  additional_databases=[self.plan_for_database(macros, macros_new)]), self.backups)
+        settings_current = {"managed": 1, "independent": 7, "later": True}
+        macros_current = {"macros": [{"id": "other", "name": "renamed later"},
+                                      macros_new["macros"][1], {"id": "later", "name": "new macro"}]}
+        for writer, current in ((settings_writer, settings_current), (macros_writer, macros_current)):
+            writer.execute("UPDATE data SET file=? WHERE _id=1", (tx.encode_json(current),))
+            writer.commit()
+        plan = tx.restore_plan(backup)
+        self.assertIsNotNone(plan.database)
+        self.assertEqual(len(plan.additional_databases), 1)
+        tx.apply(plan, self.backups)
+        self.assertEqual(self.database_value(settings), {"managed": 0, "independent": 7, "later": True})
+        self.assertEqual(self.database_value(macros), {"macros": [macros_current["macros"][0], macros_current["macros"][2]]})
+        self.assertFalse(tx.restore_plan(backup).changed)
+
+    def test_additional_database_only_plan_is_applied_and_restored(self):
+        macros, _ = self.make_database({"managed": 0}, name="macros.db")
+        plan = tx.Plan(additional_databases=[self.plan_for_database(macros, {"managed": 1})])
+        self.assertTrue(plan.changed)
+        backup = tx.apply(plan, self.backups)
+        self.assertEqual(self.database_value(backup / "macros.db"), {"managed": 0})
+        restore = tx.restore_plan(backup)
+        self.assertIsNone(restore.database)
+        self.assertEqual(len(restore.additional_databases), 1)
+        tx.apply(restore, self.backups)
+        self.assertEqual(self.database_value(macros), {"managed": 0})
+
+    def test_duplicate_database_paths_or_backup_names_are_rejected(self):
+        settings, _ = self.make_database({"managed": 0})
+        change = self.plan_for_database(settings, {"managed": 1})
+        with self.assertRaises(tx.ConflictError):
+            tx.apply(tx.Plan(database=change, additional_databases=[change]), self.backups)
+        self.assertEqual(self.database_value(settings), {"managed": 0})
+        other = self.root / "nested" / "settings.db"
+        other.parent.mkdir()
+        with closing(sqlite3.connect(other)) as connection:
+            connection.execute("CREATE TABLE data (_id INTEGER PRIMARY KEY, file BLOB NOT NULL)")
+            connection.execute("INSERT INTO data VALUES (1, ?)", (tx.encode_json({"managed": 0}),))
+            connection.commit()
+        with self.assertRaises(tx.ConflictError):
+            tx.apply(tx.Plan(database=change, additional_databases=[self.plan_for_database(other, {"managed": 1})]), self.backups)
+        self.assertFalse(self.backups.exists())
 
     def test_file_compare_and_swap_rejects_change_since_preview(self):
         path = self.root / "keybindings.json"

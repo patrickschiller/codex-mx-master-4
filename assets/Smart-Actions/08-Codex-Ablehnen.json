@@ -23,7 +23,9 @@
         "type": "KEYSTROKE",
         "keystroke": {
           "code": 41,
-          "modifiers": []
+          "modifiers": [],
+          "displayCharacter": "Escape",
+          "virtualKeyId": "VK_ESCAPE"
         },
         "actionName": "Esc",
         "onboardable": false

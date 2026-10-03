@@ -25,7 +25,9 @@
           "code": 17,
           "modifiers": [
             227
-          ]
+          ],
+          "displayCharacter": "N",
+          "virtualKeyId": "VK_N"
         },
         "actionName": "⌘N",
         "onboardable": false
@@ -58,7 +60,9 @@
           "modifiers": [
             224,
             225
-          ]
+          ],
+          "displayCharacter": "V",
+          "virtualKeyId": "VK_V"
         },
         "actionName": "⌃⇧V",
         "onboardable": false

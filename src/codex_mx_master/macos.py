@@ -14,7 +14,7 @@ from xml.parsers.expat import ExpatError
 
 
 SUPPORTED_OPTIONS = {"2.9.984725"}
-SUPPORTED_CODEX = {"26.930.21537", "26.930.31730"}
+SUPPORTED_CODEX = {"26.930.31730"}
 SUPPORTED_LPS = {"6.4.2.3414"}
 AGENT_PLIST = Path("/Library/LaunchAgents/com.logi.optionsplus.plist")
 PROCESS_NAMES = ("logioptionsplus", "logioptionsplus_agent", "LogiPluginService")
@@ -73,6 +73,10 @@ class Environment:
     settings_db: Path
     lps_root: Path
     versions: dict
+
+    @property
+    def macros_db(self):
+        return self.home / "Library/Application Support/LogiOptionsPlus/macros.db"
 
     @property
     def backup_root(self):

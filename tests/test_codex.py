@@ -10,7 +10,7 @@ from codex_mx_master.codex import (
 
 
 class CodexKeybindingsTests(unittest.TestCase):
-    def test_missing_file_creates_six_bindings_and_is_idempotent(self):
+    def test_missing_file_creates_ring_and_dictation_bindings_and_is_idempotent(self):
         desired = desired_keybindings(None)
         parsed = json.loads(desired)
         self.assertEqual({row["command"]: row["key"] for row in parsed}, BINDINGS)
@@ -32,7 +32,12 @@ class CodexKeybindingsTests(unittest.TestCase):
         self.assertIn(existing[2], result)
         self.assertEqual([row["key"] for row in result if row["command"] == "composer.togglePlanMode"],
                          [BINDINGS["composer.togglePlanMode"]])
-        self.assertEqual(len(result), 9)
+        self.assertEqual(len(result), len(BINDINGS) + 3)
+
+    def test_dictation_is_explicitly_assigned_and_conflicts_are_preserved(self):
+        self.assertEqual(BINDINGS["globalDictationSingleTap"], "Ctrl+Shift+D")
+        with self.assertRaises(KeybindingConflictError):
+            build_keybindings([{"command": "foreign.command", "key": "Shift+Control+D"}])
 
     def test_rejects_equivalent_foreign_shortcut_aliases(self):
         for key in ["Ctrl+Alt+Shift+P", "shift+option+control+p", "SHIFT+Control+Alt+P"]:

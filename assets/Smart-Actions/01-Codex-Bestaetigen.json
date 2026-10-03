@@ -23,7 +23,9 @@
         "type": "KEYSTROKE",
         "keystroke": {
           "code": 40,
-          "modifiers": []
+          "modifiers": [],
+          "displayCharacter": "⏎Return",
+          "virtualKeyId": ""
         },
         "actionName": "Return",
         "onboardable": false

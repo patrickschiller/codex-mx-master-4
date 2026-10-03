@@ -49,6 +49,11 @@ class FullPlanTests(unittest.TestCase):
             connection.execute("CREATE TABLE data (_id INTEGER PRIMARY KEY, file BLOB NOT NULL)")
             connection.execute("INSERT INTO data VALUES (1, ?)", (encode_json(self.settings),))
             connection.commit()
+        self.environment.macros_db.parent.mkdir(parents=True)
+        with closing(sqlite3.connect(self.environment.macros_db)) as connection:
+            connection.execute("CREATE TABLE data (_id INTEGER PRIMARY KEY, file BLOB NOT NULL)")
+            connection.execute("INSERT INTO data VALUES (1, ?)", (encode_json({"macro_infos": {}, "macros_settings_transferred": True}),))
+            connection.commit()
         self.keymap = self.home / ".codex/keybindings.json"
         self.keymap.parent.mkdir()
         self.original_bindings = [{"command": "newChat", "key": "Ctrl+Alt+N"},
@@ -71,10 +76,14 @@ class FullPlanTests(unittest.TestCase):
         self.assertEqual(len(codex_profiles), 1)
         by_slot = {entry["slotId"].split("_", 1)[1]: entry for entry in codex_profiles[0]["assignments"]}
         self.assertEqual(set(by_slot), {"c86", "c83", "c416", "c82", "thumb_wheel_adapter", "c195"})
-        self.assertEqual(by_slot["c86"]["card"]["macro"]["keystroke"], {"code": 40, "modifiers": []})
+        self.assertEqual(by_slot["c86"]["card"]["macro"]["keystroke"],
+                         {"code": 40, "modifiers": [], "displayCharacter": "⏎Return", "virtualKeyId": ""})
         wheel = by_slot["thumb_wheel_adapter"]["card"]["nestedCards"]
-        self.assertEqual(wheel["left"]["macro"]["keystroke"], {"code": 80, "modifiers": [227, 226]})
-        self.assertEqual(wheel["right"]["macro"]["keystroke"], {"code": 79, "modifiers": [227, 226]})
+        self.assertEqual(wheel["left"]["macro"]["keystroke"]["virtualKeyId"], "VK_LEFT")
+        self.assertEqual(wheel["right"]["macro"]["keystroke"]["virtualKeyId"], "VK_RIGHT")
+        self.assertEqual(len(plan.additional_databases), 1)
+        action = json.loads(plan.additional_databases[0].after)["macro_infos"]["macroInfos"][0]
+        self.assertEqual(by_slot["c416"]["cardId"], action["id"])
         binding_change = next(change for change in plan.files if change.path == self.keymap)
         bindings = json.loads(binding_change.after)
         for entry in self.original_bindings:
@@ -97,6 +106,7 @@ class FullPlanTests(unittest.TestCase):
 
     def test_install_restore_and_reinstall_complete_cycle(self):
         original_settings = read_database(self.environment.settings_db)[1]
+        original_macros = read_database(self.environment.macros_db)[1]
         original_keymap = self.keymap.read_bytes()
         first = cli.make_plan(self.environment, ASSETS)
         backup = apply(first, self.environment.backup_root)
@@ -105,6 +115,7 @@ class FullPlanTests(unittest.TestCase):
         restore_backup = apply(undo, self.environment.backup_root)
         self.assertTrue((restore_backup / "manifest.json").is_file())
         self.assertEqual(read_database(self.environment.settings_db)[1], original_settings)
+        self.assertEqual(read_database(self.environment.macros_db)[1], original_macros)
         self.assertEqual(self.keymap.read_bytes(), original_keymap)
         self.assertTrue(self.keymap.parent.is_dir())
         self.assertFalse(self.environment.lps_root.exists())

@@ -6,11 +6,12 @@ import sys
 import sqlite3
 import subprocess
 import zipfile
+import json
 from pathlib import Path
 
 from . import __version__
 from .codex import BINDINGS, desired_keybindings, keybindings_path
-from .logitech import desired_settings, ring_changes
+from .logitech import desired_macro_store, desired_settings, ring_changes
 from .macos import discover, paused_logitech
 from .transaction import (DatabaseChange, FileChange, Plan, apply, encode_json,
                           read_database, read_optional, restore_plan)
@@ -22,6 +23,11 @@ def make_plan(environment, assets, codex_home=None):
     desired, summary = desired_settings(existing, environment.codex_app)
     if desired != existing:
         plan.database = DatabaseChange(environment.settings_db, row_id, raw, encode_json(desired))
+    row_id, raw, existing_macros = read_database(environment.macros_db)
+    voice_info = json.loads((Path(assets) / "Smart-Actions/07-Codex-Neuer-Sprachchat.json").read_bytes())
+    desired_macros = desired_macro_store(existing_macros, voice_info)
+    if desired_macros != existing_macros:
+        plan.additional_databases.append(DatabaseChange(environment.macros_db, row_id, raw, encode_json(desired_macros)))
     plan.summary.append("Codex profile: {}; {} MX Master 4 device(s); {} assignments to update".format(
         "create" if summary["profile_created"] else "existing", len(summary["device_prefixes"]), len(summary["changed_slots"])))
     plan.summary.append("Forward → Enter; Back → Dictate; Gesture → New voice chat; Middle → Needs attention")
@@ -39,8 +45,8 @@ def make_plan(environment, assets, codex_home=None):
         current = read_optional(path)
         if current != desired:
             plan.files.append(FileChange(path, current, desired, "Actions Ring"))
-    plan.summary.append("{} custom Codex shortcuts; {} file changes; settings database: {}".format(
-        len(BINDINGS), len(plan.files), "update" if plan.database else "unchanged"))
+    plan.summary.append("{} custom Codex shortcuts; {} file changes; settings database: {}; Smart Actions database: {}".format(
+        len(BINDINGS), len(plan.files), "update" if plan.database else "unchanged", "update" if plan.additional_databases else "unchanged"))
     return plan
 
 
@@ -55,6 +61,8 @@ def show_plan(plan, environment):
                                       change.path, change.label))
     if plan.database:
         print("  Update Codex profile in " + str(plan.database.path))
+    for database in plan.additional_databases:
+        print("  Update native new-voice Smart Action in " + str(database.path))
     if not plan.changed:
         print("Already configured; no changes needed.")
 

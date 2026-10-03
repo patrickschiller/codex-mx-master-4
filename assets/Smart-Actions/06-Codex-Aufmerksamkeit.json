@@ -26,7 +26,9 @@
           "modifiers": [
             227,
             226
-          ]
+          ],
+          "displayCharacter": "A",
+          "virtualKeyId": "VK_A"
         },
         "actionName": "⌘⌥A",
         "onboardable": false

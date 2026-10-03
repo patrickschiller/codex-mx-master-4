@@ -7,7 +7,8 @@ import unittest
 import warnings
 import zipfile
 
-from codex_mx_master.logitech import desired_settings, ring_changes
+from codex_mx_master.logitech import (VOICE_MACRO_ID, desired_macro_store, desired_settings,
+                                    key_record, ring_changes)
 
 APP = Path("/Applications/Codex.app")
 PREFIX = "mx-master-4-example"
@@ -72,31 +73,72 @@ class DesiredSettingsTests(unittest.TestCase):
         for suffix, (code, modifiers) in expected.items():
             macro = assignments[suffix]["card"]["macro"]
             self.assertEqual(macro["type"], "KEYSTROKE")
-            self.assertEqual(macro["keystroke"], {"code": code, "modifiers": modifiers})
+            self.assertEqual(macro["keystroke"]["code"], code)
+            self.assertEqual(macro["keystroke"]["modifiers"], modifiers)
+            self.assertTrue(macro["keystroke"]["displayCharacter"])
         wheel = assignments["thumb_wheel_adapter"]["card"]
         self.assertEqual(wheel["attribute"], "ADAPTER_2WAYS")
-        self.assertEqual(wheel["nestedCards"]["left"]["macro"]["keystroke"], {"code": 80, "modifiers": [227, 226]})
-        self.assertEqual(wheel["nestedCards"]["right"]["macro"]["keystroke"], {"code": 79, "modifiers": [227, 226]})
+        self.assertEqual(wheel["nestedCards"]["left"]["macro"]["keystroke"],
+                         {"code": 80, "modifiers": [227, 226], "displayCharacter": "Left", "virtualKeyId": "VK_LEFT"})
+        self.assertEqual(wheel["nestedCards"]["right"]["macro"]["keystroke"],
+                         {"code": 79, "modifiers": [227, 226], "displayCharacter": "Right", "virtualKeyId": "VK_RIGHT"})
         self.assertFalse(wheel["gestureInfo"]["x"]["autoRepeat"])
         self.assertNotIn("actionThreshold", wheel["gestureInfo"]["x"])
         self.assertEqual(assignments["c195"]["card"]["macro"]["system"]["action"], "SHOW_RADIAL_MENU")
 
-    def test_new_voice_is_one_nonrepeating_sequence_without_macro_database_reference(self):
+    def test_new_voice_uses_native_smart_action_reference_and_not_shortcut_editor(self):
         result, _ = desired_settings(fixture(), APP)
         card = next(a["card"] for a in codex_profile(result)["assignments"] if a["slotId"] == PREFIX + "_c416")
-        self.assertEqual(card["attribute"], "MACRO_PLAYBACK")
-        self.assertEqual(card["macro"]["type"], "SEQUENCE")
-        sequence = card["macro"]["sequence"]
-        self.assertEqual(sequence["simpleSequence"]["components"], [
-            {"type": "KEYSTROKE", "keystroke": {"code": 17, "modifiers": [227]}},
-            {"type": "DELAY", "delay": {"durationMs": 750}},
-            {"type": "KEYSTROKE", "keystroke": {"code": 25, "modifiers": [224, 225]}},
-        ])
-        self.assertFalse(sequence["useRepeatActions"])
-        self.assertFalse(sequence["useToggleActions"])
-        self.assertFalse(sequence["useDefaultDelay"])
-        self.assertTrue(sequence["useSimpleActions"])
-        self.assertNotIn("macroId", card)
+        self.assertEqual(card["attribute"], "MACRO_REF")
+        self.assertEqual(card["id"], VOICE_MACRO_ID)
+        self.assertNotIn("macro", card)
+        self.assertNotEqual(card["id"], "card_global_presets_keyboard_shortcut")
+
+    def test_editor_key_identities_include_actual_keys_not_only_modifiers(self):
+        result, _ = desired_settings(fixture(), APP)
+        by_slot = {a["slotId"].split("_", 1)[1]: a["card"] for a in codex_profile(result)["assignments"]}
+        self.assertEqual(by_slot["c82"]["macro"]["keystroke"]["displayCharacter"], "A")
+        self.assertEqual(by_slot["c83"]["macro"]["keystroke"]["displayCharacter"], "D")
+        self.assertEqual(by_slot["c86"]["macro"]["keystroke"]["displayCharacter"], "⏎Return")
+        self.assertEqual(by_slot["c86"]["macro"]["keystroke"]["virtualKeyId"], "")
+        self.assertIn("PRESET_TAG_MACROS_UNSUPPORTED", by_slot["c82"]["tags"])
+        self.assertTrue(codex_profile(result)["activeForApplication"])
+
+
+class MacroStoreTests(unittest.TestCase):
+    def setUp(self):
+        self.info = json.loads((ROOT / "assets/Smart-Actions/07-Codex-Neuer-Sprachchat.json").read_bytes())
+
+    def test_native_collection_shape_preserves_foreign_actions_and_is_idempotent(self):
+        old = {"macro_infos": {"macroInfos": [{"id": "foreign", "name": "Keep"}]},
+               "macros_settings_transferred": True, "unrelated": 42}
+        before = copy.deepcopy(old)
+        result = desired_macro_store(old, self.info)
+        self.assertEqual(old, before)
+        self.assertEqual(result["macro_infos"]["macroInfos"][0], before["macro_infos"]["macroInfos"][0])
+        self.assertEqual(result["macro_infos"]["macroInfos"][1], self.info)
+        self.assertEqual(desired_macro_store(result, self.info), result)
+
+    def test_repairs_old_import_labels_and_preserves_user_delay(self):
+        imported = copy.deepcopy(self.info)
+        imported["cards"][1]["macro"]["delay"]["durationMs"] = 1200
+        for card in imported["cards"]:
+            key = card.get("macro", {}).get("keystroke")
+            if key:
+                key.pop("displayCharacter"); key.pop("virtualKeyId")
+        result = desired_macro_store({"macro_infos": {"macroInfos": [imported]}}, self.info)
+        repaired = result["macro_infos"]["macroInfos"][0]
+        self.assertEqual(repaired["cards"][1]["macro"]["delay"]["durationMs"], 1200)
+        self.assertEqual(repaired["cards"][0]["macro"]["keystroke"]["displayCharacter"], "N")
+        self.assertEqual(repaired["cards"][2]["macro"]["keystroke"]["virtualKeyId"], "VK_V")
+
+    def test_unknown_collection_or_duplicate_id_stops_before_mutation(self):
+        for value in ({}, {"macro_infos": []}, {"macro_infos": {"unknown": []}},
+                      {"macro_infos": {"macroInfos": [self.info, self.info]}}):
+            before = copy.deepcopy(value)
+            with self.assertRaises(ValueError):
+                desired_macro_store(value, self.info)
+            self.assertEqual(value, before)
 
     def test_second_run_is_idempotent_with_existing_or_new_registry(self):
         for include_codex in (True, False):
