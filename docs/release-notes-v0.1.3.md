@@ -1,0 +1,9 @@
+# v0.1.3
+
+The haptic thumb pad now opens the eight-action Codex Actions Ring. The upper thumb-side button runs **Sprachchat starten** in the current chat, and the back button runs **Diktieren starten**. Both use native Smart Action references and their existing Codex toggle shortcuts: Ctrl+Shift+V and Ctrl+Shift+D.
+
+The former **Codex – Neuer Sprachchat** action is removed. It no longer opens a new chat or waits before starting voice. Migration removes only that managed action and stops before writing if it is still referenced outside the Codex profile. Independent Smart Actions and unrelated mouse settings are preserved. The optional import bundle contains seven Smart Actions; the ring still contains eight actions.
+
+Restoration handles the observed native normalization for button cards, both current actions and the legacy action. Normal use can increment the native usage counter without causing a false conflict; counters on pre-existing restored actions are retained. Repairing a current action is rejected if it would change a shared action used by another application profile. Installation keeps private backups of both Logitech databases and affected files. The update has been applied on a Mac, with native persistence, an unchanged installation preview and a successful restoration preview verified. All 119 tests pass. Physical mouse events and voice/dictation activation require a user check; automated tests verify the planned settings, migration, preservation and restoration behavior.
+
+Verified application versions remain Codex 26.930.31730, Options+ 2.9.984725 with settings schema 26, and Logi Plugin Service 6.4.2.3414. Restart Codex after installing new keybindings; a mouse-only update does not need a restart when its shortcuts are already active.

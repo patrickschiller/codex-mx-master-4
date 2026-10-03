@@ -454,11 +454,19 @@ def restore_plan(backup):
         row_id, raw, current = read_database(path)
         if row_id != record["row_id"]:
             raise ConflictError("The settings row identity changed: {}".format(path))
+        original = json.loads(_unb64(record["before"]))
         installed = json.loads(_unb64(record["after"]))
         if path.name == "macros.db":
-            from .logitech import align_native_macro_snapshot
-            installed = align_native_macro_snapshot(installed, current)
-        restored = restore_value(json.loads(_unb64(record["before"])), installed, current, str(path))
+            from .logitech import align_native_macro_snapshot, align_native_macro_usage
+            try:
+                installed = align_native_macro_snapshot(installed, current)
+                original = align_native_macro_usage(original, current)
+            except ValueError as error:
+                raise ConflictError(str(error)) from error
+        elif path.name == "settings.db":
+            from .logitech import align_native_settings_snapshot
+            installed = align_native_settings_snapshot(installed, current)
+        restored = restore_value(original, installed, current, str(path))
         if restored != current:
             change = DatabaseChange(path, row_id, raw, encode_json(restored))
             if primary:

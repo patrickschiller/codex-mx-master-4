@@ -7,8 +7,8 @@ import unittest
 import warnings
 import zipfile
 
-from codex_mx_master.logitech import (VOICE_MACRO_ID, desired_macro_store, desired_settings,
-                                    key_record, ring_changes)
+from codex_mx_master.logitech import (DICTATION_MACRO_ID, LEGACY_NEW_VOICE_ID, VOICE_MACRO_ID,
+                                    desired_macro_store, desired_settings, key_record, ring_changes)
 
 APP = Path("/Applications/Codex.app")
 PREFIX = "mx-master-4-example"
@@ -69,7 +69,7 @@ class DesiredSettingsTests(unittest.TestCase):
     def test_keyboard_actions_and_exact_native_two_way_axis(self):
         result, _ = desired_settings(fixture(), APP)
         assignments = {a["slotId"].removeprefix(PREFIX + "_"): a for a in codex_profile(result)["assignments"]}
-        expected = {"c86": (40, []), "c83": (7, [224, 225]), "c82": (4, [227, 226])}
+        expected = {"c86": (40, []), "c82": (4, [227, 226])}
         for suffix, (code, modifiers) in expected.items():
             macro = assignments[suffix]["card"]["macro"]
             self.assertEqual(macro["type"], "KEYSTROKE")
@@ -84,21 +84,71 @@ class DesiredSettingsTests(unittest.TestCase):
                          {"code": 79, "modifiers": [227, 226], "displayCharacter": "Right", "virtualKeyId": "VK_RIGHT"})
         self.assertFalse(wheel["gestureInfo"]["x"]["autoRepeat"])
         self.assertNotIn("actionThreshold", wheel["gestureInfo"]["x"])
-        self.assertEqual(assignments["c195"]["card"]["macro"]["system"]["action"], "SHOW_RADIAL_MENU")
+        self.assertEqual(assignments["c416"]["card"]["macro"]["system"]["action"], "SHOW_RADIAL_MENU")
 
-    def test_new_voice_uses_native_smart_action_reference_and_not_shortcut_editor(self):
+    def test_dictation_and_voice_use_separate_named_native_smart_action_references(self):
         result, _ = desired_settings(fixture(), APP)
-        card = next(a["card"] for a in codex_profile(result)["assignments"] if a["slotId"] == PREFIX + "_c416")
-        self.assertEqual(card["attribute"], "MACRO_REF")
-        self.assertEqual(card["id"], VOICE_MACRO_ID)
-        self.assertNotIn("macro", card)
-        self.assertNotEqual(card["id"], "card_global_presets_keyboard_shortcut")
+        by_slot = {a["slotId"]: a for a in codex_profile(result)["assignments"]}
+        for suffix, identity, name in (("c83", DICTATION_MACRO_ID, "Diktieren starten"),
+                                       ("c195", VOICE_MACRO_ID, "Sprachchat starten")):
+            with self.subTest(slot=suffix):
+                assignment = by_slot[PREFIX + "_" + suffix]
+                card = assignment["card"]
+                self.assertEqual(card["attribute"], "MACRO_REF")
+                self.assertEqual(card["id"], identity)
+                self.assertEqual(assignment["cardId"], identity)
+                self.assertEqual(card["name"], name)
+                self.assertNotIn("macro", card)
+                self.assertNotEqual(card["id"], "card_global_presets_keyboard_shortcut")
+
+    def test_migrates_both_old_voice_refs_and_preserves_manual_haptic_ring(self):
+        data = fixture()
+        profile = codex_profile(data)
+        ring_card = {"id": "manual-ring", "name": "User ring", "attribute": "MACRO_PLAYBACK",
+                     "macro": {"type": "SYSTEM", "system": {"action": "SHOW_RADIAL_MENU"}},
+                     "tags": ["manual-label"], "customSetting": "preserve"}
+        ring = {"slotId": PREFIX + "_c416", "cardId": ring_card["id"], "card": ring_card,
+                "tags": ["UI_PAGE_BUTTONS"], "customAssignment": "preserve"}
+        profile["assignments"].append(copy.deepcopy(ring))
+        for suffix in ("c83", "c195"):
+            profile["assignments"].append({"slotId": PREFIX + "_" + suffix,
+                                           "cardId": LEGACY_NEW_VOICE_ID,
+                                           "card": {"id": LEGACY_NEW_VOICE_ID, "attribute": "MACRO_REF",
+                                                    "name": "Codex – Neuer Sprachchat"}})
+        result, summary = desired_settings(data, APP)
+        by_slot = {a["slotId"]: a for a in codex_profile(result)["assignments"]}
+        self.assertEqual(by_slot[PREFIX + "_c416"], ring)
+        self.assertNotIn(PREFIX + "_c416", summary["changed_slots"])
+        self.assertEqual(by_slot[PREFIX + "_c83"]["cardId"], DICTATION_MACRO_ID)
+        self.assertEqual(by_slot[PREFIX + "_c195"]["cardId"], VOICE_MACRO_ID)
+        self.assertNotIn(LEGACY_NEW_VOICE_ID, json.dumps(codex_profile(result)))
+
+    def test_legacy_reference_in_another_profile_stops_before_mutation(self):
+        for profile_key in ("profile-global", "profile-foreign"):
+            with self.subTest(profile=profile_key):
+                data = fixture()
+                data[profile_key]["assignments"].append({"slotId": "another-device_c83",
+                    "cardId": LEGACY_NEW_VOICE_ID,
+                    "card": {"id": LEGACY_NEW_VOICE_ID, "attribute": "MACRO_REF"}})
+                before = copy.deepcopy(data)
+                with self.assertRaises(ValueError):
+                    desired_settings(data, APP)
+                self.assertEqual(data, before)
+
+    def test_non_target_codex_legacy_reference_is_not_deleted_silently(self):
+        data = fixture()
+        codex_profile(data)["assignments"].append({"slotId": PREFIX + "_c197",
+            "cardId": LEGACY_NEW_VOICE_ID,
+            "card": {"id": LEGACY_NEW_VOICE_ID, "attribute": "MACRO_REF"}})
+        before = copy.deepcopy(data)
+        with self.assertRaises(ValueError):
+            desired_settings(data, APP)
+        self.assertEqual(data, before)
 
     def test_editor_key_identities_include_actual_keys_not_only_modifiers(self):
         result, _ = desired_settings(fixture(), APP)
         by_slot = {a["slotId"].split("_", 1)[1]: a["card"] for a in codex_profile(result)["assignments"]}
         self.assertEqual(by_slot["c82"]["macro"]["keystroke"]["displayCharacter"], "A")
-        self.assertEqual(by_slot["c83"]["macro"]["keystroke"]["displayCharacter"], "D")
         self.assertEqual(by_slot["c86"]["macro"]["keystroke"]["displayCharacter"], "⏎Return")
         self.assertEqual(by_slot["c86"]["macro"]["keystroke"]["virtualKeyId"], "")
         self.assertIn("PRESET_TAG_MACROS_UNSUPPORTED", by_slot["c82"]["tags"])
@@ -107,37 +157,100 @@ class DesiredSettingsTests(unittest.TestCase):
 
 class MacroStoreTests(unittest.TestCase):
     def setUp(self):
-        self.info = json.loads((ROOT / "assets/Smart-Actions/07-Codex-Neuer-Sprachchat.json").read_bytes())
+        self.infos = [json.loads((ROOT / "assets/Smart-Actions" / name).read_bytes())
+                      for name in ("02-Codex-Diktieren.json", "03-Codex-Sprachchat.json")]
 
     def test_native_collection_shape_preserves_foreign_actions_and_is_idempotent(self):
         old = {"macro_infos": {"macroInfos": [{"id": "foreign", "name": "Keep"}]},
                "macros_settings_transferred": True, "unrelated": 42}
         before = copy.deepcopy(old)
-        result = desired_macro_store(old, self.info)
+        result = desired_macro_store(old, self.infos)
         self.assertEqual(old, before)
         self.assertEqual(result["macro_infos"]["macroInfos"][0], before["macro_infos"]["macroInfos"][0])
-        self.assertEqual(result["macro_infos"]["macroInfos"][1], self.info)
-        self.assertEqual(desired_macro_store(result, self.info), result)
+        self.assertEqual(result["macro_infos"]["macroInfos"][1:], self.infos)
+        self.assertEqual(desired_macro_store(result, self.infos), result)
 
-    def test_repairs_old_import_labels_and_preserves_user_delay(self):
-        imported = copy.deepcopy(self.info)
-        imported["cards"][1]["macro"]["delay"]["durationMs"] = 1200
-        for card in imported["cards"]:
-            key = card.get("macro", {}).get("keystroke")
-            if key:
-                key.pop("displayCharacter"); key.pop("virtualKeyId")
-        result = desired_macro_store({"macro_infos": {"macroInfos": [imported]}}, self.info)
-        repaired = result["macro_infos"]["macroInfos"][0]
-        self.assertEqual(repaired["cards"][1]["macro"]["delay"]["durationMs"], 1200)
-        self.assertEqual(repaired["cards"][0]["macro"]["keystroke"]["displayCharacter"], "N")
-        self.assertEqual(repaired["cards"][2]["macro"]["keystroke"]["virtualKeyId"], "VK_V")
+    def test_migration_removes_only_legacy_action_and_retains_unrelated_actions(self):
+        legacy = {"id": LEGACY_NEW_VOICE_ID, "name": "Codex – Neuer Sprachchat"}
+        foreign = {"id": "foreign", "name": "Codex – Neuer Sprachchat", "cards": []}
+        old = {"macro_infos": {"macroInfos": [legacy, foreign]}, "unrelated": "keep"}
+        result = desired_macro_store(old, self.infos)
+        self.assertEqual(result["macro_infos"]["macroInfos"], [foreign] + self.infos)
+        self.assertEqual(result["unrelated"], "keep")
+        self.assertEqual(old["macro_infos"]["macroInfos"], [legacy, foreign])
+
+    def test_repairs_managed_names_keys_and_preserves_native_category_metadata(self):
+        imported = copy.deepcopy(self.infos)
+        category = {"categories": [{"id": "11111111-1111-1111-1111-111111111111", "name": "Für Entwickler"}]}
+        for info in imported:
+            info["name"] = "Outdated title"
+            info.pop("categories")
+            info.pop("state")
+            info["customCategories"] = copy.deepcopy(category)
+            key = info["cards"][0]["macro"]["keystroke"]
+            key["code"] = 17
+            key.pop("displayCharacter")
+            key.pop("virtualKeyId")
+        result = desired_macro_store({"macro_infos": {"macroInfos": imported}}, self.infos)
+        for repaired, expected in zip(result["macro_infos"]["macroInfos"], self.infos):
+            self.assertEqual(repaired["name"], expected["name"])
+            self.assertEqual(repaired["cards"][0]["macro"]["keystroke"],
+                             expected["cards"][0]["macro"]["keystroke"])
+            self.assertEqual(repaired["customCategories"], category)
+            self.assertNotIn("categories", repaired)
+
+    def test_native_normalized_current_actions_are_retained_exactly_on_second_run(self):
+        native = copy.deepcopy(self.infos)
+        for info in native:
+            info.pop("categories")
+            info.pop("state")
+            info["customCategories"] = {"categories": [
+                {"id": "11111111-1111-1111-1111-111111111111", "name": "Für Entwickler"}]}
+            info["cards"][0].pop("readOnly")
+            info["cards"][0].pop("continuous")
+            info["cards"][0]["macro"].pop("onboardable")
+        old = {"macro_infos": {"macroInfos": native}, "macros_settings_transferred": True}
+        self.assertEqual(desired_macro_store(old, self.infos), old)
+
+    def test_managed_action_cannot_keep_an_extra_new_chat_or_delay_step(self):
+        imported = copy.deepcopy(self.infos)
+        imported[0]["cards"].append({"id": "unexpected-delay", "macro": {
+            "type": "DELAY", "delay": {"durationMs": 750}}})
+        imported[1]["cards"].insert(0, {"id": "unexpected-new-chat", "macro": {
+            "type": "KEYSTROKE", "keystroke": {"code": 17, "modifiers": [227]}}})
+        repaired = desired_macro_store({"macro_infos": {"macroInfos": imported}}, self.infos)
+        for actual, expected in zip(repaired["macro_infos"]["macroInfos"], self.infos):
+            self.assertEqual(actual["cards"], expected["cards"])
+
+    def test_current_actions_have_one_key_and_no_new_chat_or_delay(self):
+        for info, identity, name, code in zip(self.infos, (DICTATION_MACRO_ID, VOICE_MACRO_ID),
+                                            ("Diktieren starten", "Sprachchat starten"), (7, 25)):
+            self.assertEqual((info["id"], info["name"]), (identity, name))
+            self.assertEqual(len(info["cards"]), 1)
+            macro = info["cards"][0]["macro"]
+            self.assertEqual(macro["type"], "KEYSTROKE")
+            self.assertEqual(macro["keystroke"]["code"], code)
+            self.assertEqual(macro["keystroke"]["modifiers"], [224, 225])
+            self.assertNotIn("delay", macro)
+        self.assertFalse((ROOT / "assets/Smart-Actions/07-Codex-Neuer-Sprachchat.json").exists())
+
+    def test_wrong_or_ambiguous_desired_action_definitions_are_rejected(self):
+        invalid_infos = [[], [self.infos[0]], self.infos + [self.infos[0]],
+                         [self.infos[0], self.infos[0]]]
+        for field, value in (("id", "foreign"), ("name", "Wrong title"), ("platform", "WINDOWS")):
+            bad = copy.deepcopy(self.infos)
+            bad[0][field] = value
+            invalid_infos.append(bad)
+        for infos in invalid_infos:
+            with self.subTest(infos=infos), self.assertRaises(ValueError):
+                desired_macro_store({"macro_infos": {}}, infos)
 
     def test_unknown_collection_or_duplicate_id_stops_before_mutation(self):
         for value in ({}, {"macro_infos": []}, {"macro_infos": {"unknown": []}},
-                      {"macro_infos": {"macroInfos": [self.info, self.info]}}):
+                      {"macro_infos": {"macroInfos": [self.infos[0], self.infos[0]]}}):
             before = copy.deepcopy(value)
             with self.assertRaises(ValueError):
-                desired_macro_store(value, self.info)
+                desired_macro_store(value, self.infos)
             self.assertEqual(value, before)
 
     def test_second_run_is_idempotent_with_existing_or_new_registry(self):

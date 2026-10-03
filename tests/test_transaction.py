@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 from codex_mx_master import transaction as tx
+from codex_mx_master.logitech import LEGACY_NEW_VOICE_ID
 
 
 class TransactionTests(unittest.TestCase):
@@ -39,13 +40,32 @@ class TransactionTests(unittest.TestCase):
         return tx.DatabaseChange(path, row_id, before, tx.encode_json(desired))
 
     def native_voice_fixture(self):
-        asset = Path(__file__).resolve().parents[1] / "assets" / "Smart-Actions" / "07-Codex-Neuer-Sprachchat.json"
-        installed = json.loads(asset.read_bytes())
+        # Historical release backups must remain restorable after the obsolete
+        # new-chat action is removed from the current distributable assets.
+        installed = {"id": LEGACY_NEW_VOICE_ID, "name": "Codex – Neuer Sprachchat",
+                     "description": "Historical new-chat and voice action", "state": "ACTIVE",
+                     "originType": "SHARED", "platform": "OSX", "lastEditTimestamp": "1791029318",
+                     "categories": ["FOR_DEVELOPERS"], "cards": [
+                         {"id": "historical-new-chat", "name": "⌘N", "attribute": "MACRO_PLAYBACK",
+                          "readOnly": False, "continuous": False, "macro": {"type": "KEYSTROKE",
+                              "keystroke": {"code": 17, "modifiers": [227], "displayCharacter": "N",
+                                            "virtualKeyId": "VK_N"}, "onboardable": False}},
+                         {"id": "historical-delay", "name": "Delay", "attribute": "MACRO_PLAYBACK",
+                          "readOnly": False, "continuous": False,
+                          "macro": {"type": "DELAY", "delay": {"durationMs": 750}, "onboardable": False}},
+                         {"id": "historical-voice", "name": "⌃⇧V", "attribute": "MACRO_PLAYBACK",
+                          "readOnly": False, "continuous": False, "macro": {"type": "KEYSTROKE",
+                              "keystroke": {"code": 25, "modifiers": [224, 225], "displayCharacter": "V",
+                                            "virtualKeyId": "VK_V"}, "onboardable": False}}]}
+        return installed, self.normalized_macro_info(installed)
+
+    @staticmethod
+    def normalized_macro_info(installed):
         normalized = copy.deepcopy(installed)
         # Observed native protobuf JSON serialization omits these defaults and
         # migrates the legacy developer category to a named custom category.
-        normalized.pop("state")
-        normalized.pop("categories")
+        normalized.pop("state", None)
+        normalized.pop("categories", None)
         normalized["customCategories"] = {"categories": [
             {"id": "11111111-1111-1111-1111-111111111111", "name": "Für Entwickler"}]}
         for card in normalized["cards"]:
@@ -55,7 +75,13 @@ class TransactionTests(unittest.TestCase):
                 card.pop("continuous")
             if card["macro"].get("onboardable") is False:
                 card["macro"].pop("onboardable")
-        return installed, normalized
+        return normalized
+
+    @staticmethod
+    def current_macro_fixtures():
+        assets = Path(__file__).resolve().parents[1] / "assets" / "Smart-Actions"
+        return [json.loads((assets / name).read_bytes())
+                for name in ("02-Codex-Diktieren.json", "03-Codex-Sprachchat.json")]
 
     def test_backup_includes_uncheckpointed_wal_frames(self):
         path, writer = self.make_database({"state": "checkpointed"}, wal=True)
@@ -339,6 +365,132 @@ class TransactionTests(unittest.TestCase):
                     tx.restore_plan(backup)
                 self.assertEqual(self.database_value(macros), current,
                                  "Restore preparation must preserve edited managed macros.")
+
+    def test_upgrade_restore_normalized_two_actions_recovers_legacy_and_preserves_foreign_edits(self):
+        legacy, _ = self.native_voice_fixture()
+        infos = self.current_macro_fixtures()
+        foreign = {"id": "foreign", "name": "Before upgrade"}
+        original = {"macro_infos": {"macroInfos": [legacy, foreign]}}
+        desired = {"macro_infos": {"macroInfos": [foreign] + infos}}
+        macros, writer = self.make_database(original, name="macros.db")
+        backup = tx.apply(tx.Plan(additional_databases=[self.plan_for_database(macros, desired)]), self.backups)
+        foreign_later = {"id": "foreign", "name": "Renamed independently"}
+        newly_added = {"id": "later", "name": "Created independently"}
+        current = {"macro_infos": {"macroInfos": [foreign_later] +
+                   [self.normalized_macro_info(info) for info in infos] + [newly_added]}, "later": True}
+        writer.execute("UPDATE data SET file=? WHERE _id=1", (tx.encode_json(current),))
+        writer.commit()
+        expected = {"macro_infos": {"macroInfos": [foreign_later, newly_added, legacy]}, "later": True}
+        restore = tx.restore_plan(backup)
+        self.assertEqual(json.loads(restore.additional_databases[0].after), expected)
+        tx.apply(restore, self.backups)
+        self.assertEqual(self.database_value(macros), expected)
+        self.assertFalse(tx.restore_plan(backup).changed)
+
+    def test_restore_refuses_managed_edits_for_each_current_action(self):
+        infos = self.current_macro_fixtures()
+        original = {"macro_infos": {}}
+        desired = {"macro_infos": {"macroInfos": infos}}
+        macros, writer = self.make_database(original, name="macros.db")
+        backup = tx.apply(tx.Plan(additional_databases=[self.plan_for_database(macros, desired)]), self.backups)
+        for index in range(len(infos)):
+            for field in ("key", "name", "timestamp", "unknown"):
+                with self.subTest(identity=infos[index]["id"], edit=field):
+                    changed = [self.normalized_macro_info(info) for info in infos]
+                    edited = changed[index]
+                    if field == "key":
+                        edited["cards"][0]["macro"]["keystroke"]["code"] = 17
+                    elif field == "name":
+                        edited["name"] = "User edited title"
+                    elif field == "timestamp":
+                        edited["lastEditTimestamp"] = str(int(edited["lastEditTimestamp"]) + 1)
+                    else:
+                        edited["unknownField"] = False
+                    current = {"macro_infos": {"macroInfos": changed}}
+                    writer.execute("UPDATE data SET file=? WHERE _id=1", (tx.encode_json(current),))
+                    writer.commit()
+                    with self.assertRaises(tx.ConflictError):
+                        tx.restore_plan(backup)
+                    self.assertEqual(self.database_value(macros), current)
+
+    def test_first_use_counters_do_not_block_removing_new_managed_actions(self):
+        infos = self.current_macro_fixtures()
+        original = {"macro_infos": {}}
+        desired = {"macro_infos": {"macroInfos": infos}}
+        macros, writer = self.make_database(original, name="macros.db")
+        backup = tx.apply(tx.Plan(additional_databases=[self.plan_for_database(macros, desired)]), self.backups)
+        used = [self.normalized_macro_info(info) for info in infos]
+        for info in used:
+            info["usageCount"] = 1
+        current = {"macro_infos": {"macroInfos": used}}
+        writer.execute("UPDATE data SET file=? WHERE _id=1", (tx.encode_json(current),))
+        writer.commit()
+        restore = tx.restore_plan(backup)
+        self.assertEqual(json.loads(restore.additional_databases[0].after), original)
+        tx.apply(restore, self.backups)
+        self.assertEqual(self.database_value(macros), original)
+
+    def test_restored_existing_managed_action_preserves_incremented_usage_counter(self):
+        infos = self.current_macro_fixtures()
+        before = copy.deepcopy(infos[0])
+        before["usageCount"] = 4
+        before["name"] = "Previous dictation name"
+        before["cards"][0]["macro"]["keystroke"]["code"] = 17
+        corrected = copy.deepcopy(infos[0])
+        corrected["usageCount"] = 4
+        foreign = {"id": "foreign", "name": "Independent action", "usageCount": 7}
+        original = {"macro_infos": {"macroInfos": [before, foreign]}}
+        desired = {"macro_infos": {"macroInfos": [corrected, foreign]}}
+        macros, writer = self.make_database(original, name="macros.db")
+        backup = tx.apply(tx.Plan(additional_databases=[self.plan_for_database(macros, desired)]), self.backups)
+        used = self.normalized_macro_info(corrected)
+        used["usageCount"] = 6
+        foreign_used = copy.deepcopy(foreign)
+        foreign_used["usageCount"] = 8
+        current = {"macro_infos": {"macroInfos": [used, foreign_used]}}
+        writer.execute("UPDATE data SET file=? WHERE _id=1", (tx.encode_json(current),))
+        writer.commit()
+        restored_info = copy.deepcopy(before)
+        restored_info["usageCount"] = 6
+        restore = tx.restore_plan(backup)
+        proposed = json.loads(restore.additional_databases[0].after)
+        self.assertEqual(self.normalized_macro_info(proposed["macro_infos"]["macroInfos"][0]),
+                         self.normalized_macro_info(restored_info))
+        self.assertEqual(proposed["macro_infos"]["macroInfos"][1], foreign_used)
+        tx.apply(restore, self.backups)
+        self.assertEqual(self.database_value(macros), proposed)
+
+    def test_usage_counter_does_not_hide_invalid_counters_or_real_managed_edits(self):
+        infos = self.current_macro_fixtures()
+        original = {"macro_infos": {}}
+        desired = {"macro_infos": {"macroInfos": infos}}
+        macros, writer = self.make_database(original, name="macros.db")
+        backup = tx.apply(tx.Plan(additional_databases=[self.plan_for_database(macros, desired)]), self.backups)
+        for index in range(len(infos)):
+            for edit in ("negative", "string", "bool", "key", "name", "timestamp"):
+                with self.subTest(identity=infos[index]["id"], edit=edit):
+                    changed = [self.normalized_macro_info(info) for info in infos]
+                    for info in changed:
+                        info["usageCount"] = 1
+                    edited = changed[index]
+                    if edit == "negative":
+                        edited["usageCount"] = -1
+                    elif edit == "string":
+                        edited["usageCount"] = "1"
+                    elif edit == "bool":
+                        edited["usageCount"] = True
+                    elif edit == "key":
+                        edited["cards"][0]["macro"]["keystroke"]["code"] = 17
+                    elif edit == "name":
+                        edited["name"] = "User edited title"
+                    else:
+                        edited["lastEditTimestamp"] = str(int(edited["lastEditTimestamp"]) + 1)
+                    current = {"macro_infos": {"macroInfos": changed}}
+                    writer.execute("UPDATE data SET file=? WHERE _id=1", (tx.encode_json(current),))
+                    writer.commit()
+                    with self.assertRaises(tx.ConflictError):
+                        tx.restore_plan(backup)
+                    self.assertEqual(self.database_value(macros), current)
 
     def test_file_compare_and_swap_rejects_change_since_preview(self):
         path = self.root / "keybindings.json"

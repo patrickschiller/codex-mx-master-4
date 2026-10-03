@@ -1,7 +1,7 @@
 {
   "id": "0ac4534a-c1b7-4bc3-ae0d-589abf4dd4a3",
-  "name": "Codex – Sprachchat",
-  "description": "Sprachchat im aktuellen Codex-Chat starten (Control + Shift + V).",
+  "name": "Sprachchat starten",
+  "description": "Sprachchat im aktuellen Codex-Chat mit Control + Shift + V starten oder einen laufenden Sprachchat stoppen.",
   "state": "ACTIVE",
   "originType": "SHARED",
   "platform": "OSX",

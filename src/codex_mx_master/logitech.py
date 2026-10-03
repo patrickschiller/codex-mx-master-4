@@ -10,8 +10,13 @@ import uuid
 import zipfile
 
 BUNDLE_ID = "com.openai.codex"
-VOICE_MACRO_ID = "e9c7a15a-e6c8-43ce-912a-4014a0d16af2"
-VOICE_MACRO_NAME = "Codex – Neuer Sprachchat"
+LEGACY_NEW_VOICE_ID = "e9c7a15a-e6c8-43ce-912a-4014a0d16af2"
+DICTATION_MACRO_ID = "94a667c2-299a-427c-af92-36c1d496d8d1"
+VOICE_MACRO_ID = "0ac4534a-c1b7-4bc3-ae0d-589abf4dd4a3"
+MANAGED_MACROS = {
+    DICTATION_MACRO_ID: ("Diktieren starten", 7),
+    VOICE_MACRO_ID: ("Sprachchat starten", 25),
+}
 SETTINGS_SCHEMA = 26
 _SLOT_RE = re.compile(r"^(mx-master-4-[^_]+)_(.+)$")
 _GUID_RE = re.compile(r"^[A-Fa-f0-9]{32}$")
@@ -63,23 +68,35 @@ def _wheel_card() -> dict:
     }
 
 
-def _new_voice_card() -> dict:
+def _smart_action_card(action_id: str) -> dict:
     # Native Smart Action references use the MacroInfo id as the Card id.
-    # The keyboard-shortcut preset does not support an inline SEQUENCE editor.
-    return {"id": VOICE_MACRO_ID, "name": VOICE_MACRO_NAME, "attribute": "MACRO_REF",
+    return {"id": action_id, "name": MANAGED_MACROS[action_id][0], "attribute": "MACRO_REF",
             "readOnly": True, "executeOnProfileChange": True, "selectedNestedCard": "",
             "nestedCards": {}, "nestedCardsOrder": [], "tags": [], "taskId": 0,
             "applicationId": ""}
 
 
-def desired_macro_store(existing: dict, voice_info: dict) -> dict:
-    """Merge the one native Smart Action referenced by the gesture assignment."""
+def desired_macro_store(existing: dict, action_infos: list[dict]) -> dict:
+    """Merge two named single-key actions and remove our retired new-chat action."""
     if not isinstance(existing, dict) or not isinstance(existing.get("macro_infos"), dict):
         raise ValueError("Unsupported native Smart Actions database document")
-    if not isinstance(voice_info, dict) or voice_info.get("id") != VOICE_MACRO_ID:
-        raise ValueError("Unexpected new-voice Smart Action identity")
-    if voice_info.get("platform") != "OSX" or voice_info.get("name") != VOICE_MACRO_NAME:
-        raise ValueError("Unexpected new-voice Smart Action platform or name")
+    if (not isinstance(action_infos, list) or len(action_infos) != len(MANAGED_MACROS)
+            or any(not isinstance(info, dict) or not isinstance(info.get("id"), str) for info in action_infos)
+            or {info.get("id") for info in action_infos} != set(MANAGED_MACROS)):
+        raise ValueError("Unexpected dictation/voice Smart Action identities")
+    specs = {}
+    for info in action_infos:
+        name, code = MANAGED_MACROS[info["id"]]
+        cards = info.get("cards")
+        macro = cards[0].get("macro") if isinstance(cards, list) and len(cards) == 1 and isinstance(cards[0], dict) else None
+        if info.get("platform") != "OSX" or info.get("name") != name or info.get("state") != "ACTIVE":
+            raise ValueError("Unexpected dictation/voice Smart Action platform, name or state")
+        if (not isinstance(cards, list) or len(cards) != 1 or not isinstance(cards[0], dict)
+                or cards[0].get("attribute") != "MACRO_PLAYBACK"
+                or not isinstance(macro, dict) or macro.get("type") != "KEYSTROKE"
+                or macro.get("keystroke") != key_record(code, [224, 225])):
+            raise ValueError("Dictation/voice Smart Actions must contain only their single shortcut")
+        specs[info["id"]] = info
     desired = copy.deepcopy(existing)
     collection = desired["macro_infos"]
     if set(collection) - {"macroInfos"}:
@@ -89,40 +106,104 @@ def desired_macro_store(existing: dict, voice_info: dict) -> dict:
         raise ValueError("Invalid native Smart Action list")
     if len({info["id"] for info in infos}) != len(infos):
         raise ValueError("Duplicate native Smart Action identities")
-    matches = [info for info in infos if info["id"] == VOICE_MACRO_ID]
-    if not matches:
-        infos.append(copy.deepcopy(voice_info))
-        collection["macroInfos"] = infos
-    else:
-        # Preserve an already imported action's delay and independent edits.
-        # Add the native key identities missing from the first release assets.
-        for card in matches[0].get("cards", []):
-            macro = card.get("macro", {})
-            if macro.get("type") == "KEYSTROKE":
-                key = macro.get("keystroke", {})
-                identity = key_record(key.get("code"), key.get("modifiers", []))
-                key.setdefault("displayCharacter", identity["displayCharacter"])
-                key.setdefault("virtualKeyId", identity["virtualKeyId"])
+    result = []
+    present = set()
+    for info in infos:
+        action_id = info["id"]
+        if action_id == LEGACY_NEW_VOICE_ID:
+            continue
+        if action_id not in specs:
+            result.append(info)
+            continue
+        present.add(action_id)
+        candidate = copy.deepcopy(info)
+        for key in ("name", "description", "state", "platform", "cards"):
+            candidate[key] = copy.deepcopy(specs[action_id][key])
+        # Preserve native metadata and its omission of observed default values.
+        result.append(info if _native_macro_equivalent(candidate, info) else candidate)
+    for action_id, spec in specs.items():
+        if action_id not in present:
+            result.append(copy.deepcopy(spec))
+    collection["macroInfos"] = result
     return desired
 
 
-def align_native_macro_snapshot(installed: dict, current: dict) -> dict:
-    """Recognize native serialization of our otherwise unchanged Smart Action.
+def _normalized_card(card: dict) -> dict:
+    """Omit only known native protobuf defaults at their schema positions."""
+    value = copy.deepcopy(card)
+    for key, default in (("readOnly", False), ("continuous", False), ("taskId", 0),
+                         ("applicationId", ""), ("selectedNestedCard", ""),
+                         ("nestedCardsOrder", []), ("tags", [])):
+        if key in value and type(value[key]) is type(default) and value[key] == default:
+            value.pop(key)
+    macro = value.get("macro")
+    if isinstance(macro, dict):
+        for key, default in (("onboardable", False), ("icon", "")):
+            if key in macro and type(macro[key]) is type(default) and macro[key] == default:
+                macro.pop(key)
+        key = macro.get("keystroke")
+        if isinstance(key, dict):
+            for field, default in (("modifiers", []), ("virtualKeyId", "")):
+                if field in key and type(key[field]) is type(default) and key[field] == default:
+                    key.pop(field)
+    gesture = value.get("gestureInfo")
+    axis = gesture.get("x") if isinstance(gesture, dict) else None
+    if isinstance(axis, dict) and axis.get("autoRepeat") is False:
+        axis.pop("autoRepeat")
+    nested = value.get("nestedCards")
+    if isinstance(nested, dict):
+        value["nestedCards"] = {key: _normalized_card(item) if isinstance(item, dict) else item
+                                for key, item in nested.items()}
+        if not value["nestedCards"]:
+            value.pop("nestedCards")
+    return value
 
-    Keep runtime values, name, description and edit timestamp strict. Native
-    startup omits protobuf defaults and migrates the legacy developer category.
-    """
-    if any(not isinstance(doc.get("macro_infos"), dict) for doc in (installed, current)):
+
+def _native_card_equivalent(expected: dict, actual: dict) -> bool:
+    return _normalized_card(expected) == _normalized_card(actual)
+
+
+def align_native_settings_snapshot(installed: dict, current: dict) -> dict:
+    """Recognize native default omission in only our Codex target assignments."""
+    applications = installed.get("applications")
+    registry = applications.get("applications") if isinstance(applications, dict) else None
+    if not isinstance(registry, list) or not isinstance(installed.get("profile_keys"), list):
         return installed
-    expected = installed["macro_infos"].get("macroInfos", [])
-    actual = current["macro_infos"].get("macroInfos", [])
-    if not isinstance(expected, list) or not isinstance(actual, list):
-        return installed
-    originals = [i for i in expected if isinstance(i, dict) and i.get("id") == VOICE_MACRO_ID]
-    natives = [i for i in actual if isinstance(i, dict) and i.get("id") == VOICE_MACRO_ID]
-    if len(originals) != 1 or len(natives) != 1:
-        return installed
-    left, right = copy.deepcopy(originals[0]), copy.deepcopy(natives[0])
+    app_ids = {app.get("applicationId") for app in registry
+               if isinstance(app, dict) and app.get("bundleId") == BUNDLE_ID
+               and isinstance(app.get("applicationId"), str)}
+    aligned = copy.deepcopy(installed)
+    for profile_key in installed["profile_keys"]:
+        profile, actual = installed.get(profile_key), current.get(profile_key)
+        if (not isinstance(profile, dict) or not isinstance(actual, dict)
+                or profile.get("applicationId") not in app_ids
+                or not isinstance(profile.get("assignments"), list)
+                or not isinstance(actual.get("assignments"), list)):
+            continue
+        for index, assignment in enumerate(profile["assignments"]):
+            if not isinstance(assignment, dict) or not isinstance(assignment.get("slotId"), str):
+                continue
+            match = _SLOT_RE.fullmatch(assignment["slotId"])
+            if not match or match[2] not in _TARGETS:
+                continue
+            natives = [item for item in actual["assignments"]
+                       if isinstance(item, dict) and item.get("slotId") == assignment["slotId"]]
+            if len(natives) != 1:
+                continue
+            left, right = copy.deepcopy(assignment), copy.deepcopy(natives[0])
+            for item in (left, right):
+                if item.get("isDisabled") is False:
+                    item.pop("isDisabled")
+                if isinstance(item.get("card"), dict):
+                    item["card"] = _normalized_card(item["card"])
+            if left == right:
+                aligned[profile_key]["assignments"][index] = copy.deepcopy(natives[0])
+    return aligned
+
+
+def _native_macro_equivalent(expected: dict, actual: dict) -> bool:
+    """Recognize known native defaults, category migration and the runtime usage counter."""
+    left, right = copy.deepcopy(expected), copy.deepcopy(actual)
     category = right.get("customCategories", {})
     custom = category.get("categories", []) if isinstance(category, dict) else None
     if (left.get("categories") == ["FOR_DEVELOPERS"] and "categories" not in right
@@ -133,35 +214,65 @@ def align_native_macro_snapshot(installed: dict, current: dict) -> dict:
         try:
             uuid.UUID(custom[0]["id"])
         except (ValueError, TypeError, AttributeError):
-            return installed
+            return False
         left.pop("categories")
         right.pop("customCategories")
     for info in (left, right):
+        if "usageCount" in info:
+            if type(info["usageCount"]) is not int or not 0 <= info["usageCount"] <= 4294967295:
+                raise ValueError("Invalid native Smart Action usageCount (expected uint32)")
+            info.pop("usageCount")
         if info.get("state") == "ACTIVE":
             info.pop("state")
+        cards = info.get("cards")
+        if isinstance(cards, list):
+            info["cards"] = [_normalized_card(card) if isinstance(card, dict) else card for card in cards]
+    return left == right
 
-    def omit_defaults(info):
-        # Only the observed defaults at their native schema locations are
-        # equivalent to absence. Unknown fields, even empty ones, remain strict.
-        cards = info.get("cards", [])
-        if not isinstance(cards, list):
-            return info
-        for card in cards:
-            if not isinstance(card, dict):
-                continue
-            for key in ("readOnly", "continuous"):
-                if card.get(key) is False:
-                    card.pop(key)
-            macro = card.get("macro")
-            if isinstance(macro, dict) and macro.get("onboardable") is False:
-                macro.pop("onboardable")
-        return info
 
-    if omit_defaults(left) != omit_defaults(right):
+def align_native_macro_usage(original: dict, current: dict) -> dict:
+    """Keep runtime counters on actions that already existed before installation."""
+    if any(not isinstance(doc.get("macro_infos"), dict) for doc in (original, current)):
+        return original
+    before = original["macro_infos"].get("macroInfos", [])
+    actual = current["macro_infos"].get("macroInfos", [])
+    if not isinstance(before, list) or not isinstance(actual, list):
+        return original
+    aligned = copy.deepcopy(original)
+    for index, info in enumerate(before):
+        if not isinstance(info, dict) or info.get("id") not in (*MANAGED_MACROS, LEGACY_NEW_VOICE_ID):
+            continue
+        matches = [item for item in actual if isinstance(item, dict) and item.get("id") == info["id"]]
+        if len(matches) != 1:
+            continue
+        native = matches[0]
+        if "usageCount" in native:
+            counter = native["usageCount"]
+            if type(counter) is not int or not 0 <= counter <= 4294967295:
+                raise ValueError("Invalid native Smart Action usageCount (expected uint32)")
+            aligned["macro_infos"]["macroInfos"][index]["usageCount"] = counter
+        else:
+            aligned["macro_infos"]["macroInfos"][index].pop("usageCount", None)
+    return aligned
+
+
+def align_native_macro_snapshot(installed: dict, current: dict) -> dict:
+    """Align unchanged native representations, including historical backups.
+
+    Runtime values, names, descriptions, timestamps and unknown fields stay strict.
+    """
+    if any(not isinstance(doc.get("macro_infos"), dict) for doc in (installed, current)):
+        return installed
+    expected = installed["macro_infos"].get("macroInfos", [])
+    actual = current["macro_infos"].get("macroInfos", [])
+    if not isinstance(expected, list) or not isinstance(actual, list):
         return installed
     aligned = copy.deepcopy(installed)
-    infos = aligned["macro_infos"]["macroInfos"]
-    infos[infos.index(originals[0])] = copy.deepcopy(natives[0])
+    for action_id in (*MANAGED_MACROS, LEGACY_NEW_VOICE_ID):
+        originals = [i for i in expected if isinstance(i, dict) and i.get("id") == action_id]
+        natives = [i for i in actual if isinstance(i, dict) and i.get("id") == action_id]
+        if len(originals) == 1 and len(natives) == 1 and _native_macro_equivalent(originals[0], natives[0]):
+            aligned["macro_infos"]["macroInfos"][expected.index(originals[0])] = copy.deepcopy(natives[0])
     return aligned
 
 
@@ -240,8 +351,8 @@ def desired_settings(existing: dict, app_path: Path) -> tuple[dict, dict]:
     if not prefixes:
         raise ValueError("No MX Master 4 slots found in the native default profile")
     cards = {"c86": _keyboard_card("Enter", 40, []),
-             "c83": _keyboard_card("⌃⇧D", 7, [224, 225]),
-             "c416": _new_voice_card(),
+             "c83": _smart_action_card(DICTATION_MACRO_ID),
+             "c195": _smart_action_card(VOICE_MACRO_ID),
              "c82": _keyboard_card("⌘⌥A", 4, [227, 226]),
              "thumb_wheel_adapter": _wheel_card()}
     changed_slots = []
@@ -258,15 +369,17 @@ def desired_settings(existing: dict, app_path: Path) -> tuple[dict, dict]:
                 raise ValueError(f"Duplicate Codex assignment for {suffix}")
             old = existing_targets[0] if existing_targets else None
             new = copy.deepcopy(old if old is not None else native[slot])
-            if suffix == "c195":
+            if suffix == "c416":
                 current_card = new.get("card", {})
                 if current_card.get("macro", {}).get("system", {}).get("action") == "SHOW_RADIAL_MENU":
                     card = current_card
                 else:
-                    native_card = native[slot].get("card", {})
+                    native_card = native[prefix + "_c195"].get("card", {})
                     card = copy.deepcopy(native_card) if native_card.get("macro", {}).get("system", {}).get("action") == "SHOW_RADIAL_MENU" else _ring_card()
             else:
                 card = copy.deepcopy(cards[suffix])
+            if old is not None and isinstance(old.get("card"), dict) and _native_card_equivalent(card, old["card"]):
+                card = old["card"]
             new.update(card=card, cardId=card["id"], slotId=slot)
             if "isDisabled" in new:
                 new["isDisabled"] = False
@@ -276,6 +389,18 @@ def desired_settings(existing: dict, app_path: Path) -> tuple[dict, dict]:
                 else:
                     assignments[assignments.index(old)] = new
                 changed_slots.append(slot)
+    def references_retired(value):
+        if isinstance(value, dict):
+            if (value.get("cardId") == LEGACY_NEW_VOICE_ID
+                    or value.get("attribute") == "MACRO_REF" and value.get("id") == LEGACY_NEW_VOICE_ID):
+                return True
+            return any(references_retired(item) for item in value.values())
+        return isinstance(value, list) and any(references_retired(item) for item in value)
+
+    for key in keys:
+        other = desired.get(key, {})
+        if isinstance(other, dict) and references_retired(other.get("assignments", [])):
+            raise ValueError("The retired new-chat action is still referenced outside the managed Codex buttons")
     return desired, {"changed": desired != existing, "application_created": app_created,
                      "profile_created": profile_created, "profile_key": profile_key,
                      "device_prefixes": prefixes, "changed_slots": changed_slots,

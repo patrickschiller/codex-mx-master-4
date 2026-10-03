@@ -1,4 +1,5 @@
 import io
+import copy
 import json
 import sqlite3
 import tempfile
@@ -9,10 +10,45 @@ from unittest.mock import patch
 
 from codex_mx_master import cli, macos
 from codex_mx_master.codex import BINDINGS
-from codex_mx_master.transaction import Plan, apply, encode_json, read_database, restore_plan
+from codex_mx_master.logitech import (DICTATION_MACRO_ID, LEGACY_NEW_VOICE_ID, VOICE_MACRO_ID,
+                                    align_native_settings_snapshot)
+from codex_mx_master.transaction import ConflictError, Plan, apply, encode_json, read_database, restore_plan
 
 
 ASSETS = Path(__file__).resolve().parents[1] / "assets"
+
+
+def normalize_native_settings(document):
+    """Synthetic fixture for the defaults omitted by Options+ serialization."""
+    result = copy.deepcopy(document)
+
+    def card_defaults(card):
+        for key, default in (("readOnly", False), ("continuous", False), ("taskId", 0),
+                             ("applicationId", ""), ("selectedNestedCard", ""),
+                             ("nestedCards", {}), ("nestedCardsOrder", []), ("tags", [])):
+            if key in card and card[key] == default:
+                card.pop(key)
+        macro = card.get("macro", {})
+        for key, default in (("onboardable", False), ("icon", "")):
+            if key in macro and macro[key] == default:
+                macro.pop(key)
+        key = macro.get("keystroke", {})
+        for field, default in (("modifiers", []), ("virtualKeyId", "")):
+            if field in key and key[field] == default:
+                key.pop(field)
+        axis = card.get("gestureInfo", {}).get("x", {})
+        if axis.get("autoRepeat") is False:
+            axis.pop("autoRepeat")
+        for nested in card.get("nestedCards", {}).values():
+            card_defaults(nested)
+
+    for profile_key in result["profile_keys"]:
+        for assignment in result[profile_key].get("assignments", []):
+            if "card" in assignment:
+                card_defaults(assignment["card"])
+            if assignment.get("isDisabled") is False:
+                assignment.pop("isDisabled")
+    return result
 
 
 def synthetic_settings():
@@ -82,8 +118,11 @@ class FullPlanTests(unittest.TestCase):
         self.assertEqual(wheel["left"]["macro"]["keystroke"]["virtualKeyId"], "VK_LEFT")
         self.assertEqual(wheel["right"]["macro"]["keystroke"]["virtualKeyId"], "VK_RIGHT")
         self.assertEqual(len(plan.additional_databases), 1)
-        action = json.loads(plan.additional_databases[0].after)["macro_infos"]["macroInfos"][0]
-        self.assertEqual(by_slot["c416"]["cardId"], action["id"])
+        actions = json.loads(plan.additional_databases[0].after)["macro_infos"]["macroInfos"]
+        self.assertEqual({action["id"] for action in actions}, {DICTATION_MACRO_ID, VOICE_MACRO_ID})
+        self.assertEqual(by_slot["c83"]["cardId"], DICTATION_MACRO_ID)
+        self.assertEqual(by_slot["c195"]["cardId"], VOICE_MACRO_ID)
+        self.assertEqual(by_slot["c416"]["card"]["macro"]["system"]["action"], "SHOW_RADIAL_MENU")
         binding_change = next(change for change in plan.files if change.path == self.keymap)
         bindings = json.loads(binding_change.after)
         for entry in self.original_bindings:
@@ -103,6 +142,120 @@ class FullPlanTests(unittest.TestCase):
         self.assertFalse(second.changed)
         self.assertEqual(second.files, [])
         self.assertIsNone(second.database)
+
+    def test_native_normalized_physical_cards_do_not_create_a_repair_plan(self):
+        first = cli.make_plan(self.environment, ASSETS)
+        apply(first, self.environment.backup_root)
+        installed = read_database(self.environment.settings_db)[2]
+        normalized = normalize_native_settings(installed)
+        self.assertNotEqual(normalized, installed, "Fixture must exercise native default omission")
+        with closing(sqlite3.connect(self.environment.settings_db)) as connection:
+            connection.execute("UPDATE data SET file=? WHERE _id=1", (encode_json(normalized),))
+            connection.commit()
+        second = cli.make_plan(self.environment, ASSETS)
+        self.assertFalse(second.changed)
+        self.assertIsNone(second.database)
+        self.assertEqual(read_database(self.environment.settings_db)[2], normalized)
+
+    def test_upgrade_restore_accepts_native_cards_and_retains_independent_fields(self):
+        first = cli.make_plan(self.environment, ASSETS)
+        original = json.loads(first.database.after)
+        profile_key = next(key for key in original["profile_keys"] if key not in self.settings["profile_keys"])
+        for assignment in original[profile_key]["assignments"]:
+            assignment["isDisabled"] = False
+            if assignment["slotId"].endswith(("_c83", "_c195")):
+                assignment["cardId"] = LEGACY_NEW_VOICE_ID
+                assignment["card"] = {"id": LEGACY_NEW_VOICE_ID, "attribute": "MACRO_REF",
+                                      "name": "Codex – Neuer Sprachchat"}
+            elif assignment["slotId"].endswith("_c86"):
+                assignment["card"]["macro"]["keystroke"].update(
+                    code=41, displayCharacter="Escape", virtualKeyId="VK_ESCAPE")
+        with closing(sqlite3.connect(self.environment.settings_db)) as connection:
+            connection.execute("UPDATE data SET file=? WHERE _id=1", (encode_json(original),))
+            connection.commit()
+        upgrade = cli.make_plan(self.environment, ASSETS)
+        backup = apply(upgrade, self.environment.backup_root)
+        installed = read_database(self.environment.settings_db)[2]
+        normalized = normalize_native_settings(installed)
+        normalized["native-scroll-settings"]["speed"] = 91
+        with closing(sqlite3.connect(self.environment.settings_db)) as connection:
+            connection.execute("UPDATE data SET file=? WHERE _id=1", (encode_json(normalized),))
+            connection.commit()
+        undo = restore_plan(backup)
+        expected = normalize_native_settings(original)
+        expected["native-scroll-settings"]["speed"] = 91
+        restored = json.loads(undo.database.after)
+        self.assertEqual(normalize_native_settings(restored), expected)
+        for edit in ("key", "name", "unknownCard", "unknownAssignment"):
+            with self.subTest(edit=edit):
+                changed = copy.deepcopy(normalized)
+                if edit == "key":
+                    assignment = next(a for a in changed[profile_key]["assignments"]
+                                      if a["slotId"].endswith("_c86"))
+                    assignment["card"]["macro"]["keystroke"]["code"] = 7
+                elif edit == "name":
+                    assignment = next(a for a in changed[profile_key]["assignments"]
+                                      if a["slotId"].endswith("_c195"))
+                    assignment["card"]["name"] = "User renamed voice action"
+                else:
+                    assignment = next(a for a in changed[profile_key]["assignments"]
+                                      if a["slotId"].endswith("_c83"))
+                    if edit == "unknownCard":
+                        assignment["card"]["unknownField"] = False
+                    else:
+                        assignment["unknownField"] = 0
+                with closing(sqlite3.connect(self.environment.settings_db)) as connection:
+                    connection.execute("UPDATE data SET file=? WHERE _id=1", (encode_json(changed),))
+                    connection.commit()
+                if edit in ("key", "name"):
+                    with self.assertRaises(ConflictError):
+                        restore_plan(backup)
+                else:
+                    aligned = align_native_settings_snapshot(installed, changed)
+                    aligned_assignment = next(a for a in aligned[profile_key]["assignments"]
+                                              if a["slotId"].endswith("_c83"))
+                    self.assertNotIn("unknownField", aligned_assignment)
+                    self.assertNotIn("unknownField", aligned_assignment["card"])
+                    proposed = json.loads(restore_plan(backup).database.after)
+                    retained = next(a for a in proposed[profile_key]["assignments"]
+                                    if a["slotId"].endswith("_c83"))
+                    self.assertEqual(retained["card"]["unknownField"] if edit == "unknownCard"
+                                     else retained["unknownField"], False if edit == "unknownCard" else 0)
+                self.assertEqual(read_database(self.environment.settings_db)[2], changed)
+        with closing(sqlite3.connect(self.environment.settings_db)) as connection:
+            connection.execute("UPDATE data SET file=? WHERE _id=1", (encode_json(normalized),))
+            connection.commit()
+        apply(restore_plan(backup), self.environment.backup_root)
+        self.assertEqual(normalize_native_settings(read_database(self.environment.settings_db)[2]), expected)
+
+    def test_upgrade_replaces_old_refs_removes_old_action_and_restores_prior_mapping(self):
+        initial = cli.make_plan(self.environment, ASSETS)
+        installed_settings = json.loads(initial.database.after)
+        profile_key = next(key for key in installed_settings["profile_keys"]
+                           if key not in self.settings["profile_keys"])
+        for assignment in installed_settings[profile_key]["assignments"]:
+            if assignment["slotId"].endswith(("_c83", "_c195")):
+                assignment["cardId"] = LEGACY_NEW_VOICE_ID
+                assignment["card"] = {"id": LEGACY_NEW_VOICE_ID, "name": "Codex – Neuer Sprachchat",
+                                      "attribute": "MACRO_REF"}
+        legacy = {"id": LEGACY_NEW_VOICE_ID, "name": "Codex – Neuer Sprachchat", "cards": []}
+        foreign = {"id": "foreign", "name": "Independent action", "cards": []}
+        old_macros = {"macro_infos": {"macroInfos": [legacy, foreign]}, "macros_settings_transferred": True}
+        for path, document in ((self.environment.settings_db, installed_settings),
+                               (self.environment.macros_db, old_macros)):
+            with closing(sqlite3.connect(path)) as connection:
+                connection.execute("UPDATE data SET file=? WHERE _id=1", (encode_json(document),))
+                connection.commit()
+        upgrade = cli.make_plan(self.environment, ASSETS)
+        self.assertIsNotNone(upgrade.database)
+        backup = apply(upgrade, self.environment.backup_root)
+        macros = read_database(self.environment.macros_db)[2]["macro_infos"]["macroInfos"]
+        self.assertEqual({info["id"] for info in macros}, {"foreign", DICTATION_MACRO_ID, VOICE_MACRO_ID})
+        self.assertEqual(macros[0], foreign)
+        self.assertFalse(cli.make_plan(self.environment, ASSETS).changed)
+        apply(restore_plan(backup), self.environment.backup_root)
+        self.assertEqual(read_database(self.environment.settings_db)[2], installed_settings)
+        self.assertEqual(read_database(self.environment.macros_db)[2], old_macros)
 
     def test_install_restore_and_reinstall_complete_cycle(self):
         original_settings = read_database(self.environment.settings_db)[1]
@@ -175,6 +328,36 @@ class FullPlanTests(unittest.TestCase):
             cli.make_plan(self.environment, ASSETS)
         self.assertEqual(read_database(self.environment.settings_db)[1], original)
         self.assertFalse(self.environment.lps_root.exists())
+
+    def test_shared_managed_action_is_not_repaired_behind_another_app_profile(self):
+        settings = copy.deepcopy(self.settings)
+        settings["profile-unrelated"]["assignments"].append({
+            "slotId": "mx-master-4-synthetic_c83", "cardId": DICTATION_MACRO_ID,
+            "card": {"id": DICTATION_MACRO_ID, "attribute": "MACRO_REF", "name": "Diktieren starten"}})
+        infos = [json.loads((ASSETS / "Smart-Actions" / name).read_bytes())
+                 for name in ("02-Codex-Diktieren.json", "03-Codex-Sprachchat.json")]
+        for edited in (False, True):
+            with self.subTest(edited=edited):
+                macros = {"macro_infos": {"macroInfos": copy.deepcopy(infos)}}
+                if edited:
+                    macros["macro_infos"]["macroInfos"][0]["cards"][0]["macro"]["keystroke"]["code"] = 17
+                for path, document in ((self.environment.settings_db, settings),
+                                       (self.environment.macros_db, macros)):
+                    with closing(sqlite3.connect(path)) as connection:
+                        connection.execute("UPDATE data SET file=? WHERE _id=1", (encode_json(document),))
+                        connection.commit()
+                original_settings = read_database(self.environment.settings_db)[1]
+                original_macros = read_database(self.environment.macros_db)[1]
+                original_keymap = self.keymap.read_bytes()
+                if edited:
+                    with self.assertRaises(ValueError):
+                        cli.make_plan(self.environment, ASSETS)
+                else:
+                    self.assertTrue(cli.make_plan(self.environment, ASSETS).changed)
+                self.assertEqual(read_database(self.environment.settings_db)[1], original_settings)
+                self.assertEqual(read_database(self.environment.macros_db)[1], original_macros)
+                self.assertEqual(self.keymap.read_bytes(), original_keymap)
+                self.assertFalse(self.environment.lps_root.exists())
 
     def test_unsafe_adapter_ring_path_is_rejected(self):
         for relative in (Path("/absolute/escape"), Path("../escape")):

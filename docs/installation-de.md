@@ -15,20 +15,22 @@ Lade das GitHub-Projekt herunter und entpacke es. Im Terminal im Projektordner:
 
 Options+ und der Logi Plugin Service werden kurz angehalten und anschließend wieder gestartet. Die ursprünglichen Dateien sowie vollständige SQLite-Snapshots von `settings.db` und `macros.db` einschließlich WAL-Daten werden lokal gesichert. Globale Mausprofile, andere Anwendungen, Zeigergeschwindigkeit und Scroll-Einstellungen werden erhalten; nur die Zielbelegungen im Codex-Profil werden ersetzt.
 
-Beende Codex nach Abschluss deiner laufenden Chats vollständig mit Cmd+Q und öffne es erneut, damit die neuen Tastenkürzel sicher aktiv sind. Der Installer beendet Codex nicht.
+Wenn die Codex-Tastenkürzel neu installiert wurden, beende Codex nach Abschluss deiner laufenden Chats vollständig mit Cmd+Q und öffne es erneut. So werden die neuen Kürzel sicher aktiv. Sind sie bereits aktiv und werden nur die Mausbelegungen geändert, ist kein weiterer Codex-Neustart nötig. Der Installer beendet Codex nicht.
 
 ## Belegung
 
 | Bedienelement | Aktion |
 | --- | --- |
 | Vor-Taste | Enter zum Bestätigen oder Senden |
-| Zurück-Taste | Diktieren, Ctrl+Shift+D |
-| Gestentaste | Neuer Chat, dann Sprachchat starten |
+| Zurück-Taste | Smart Action „Diktieren starten“, Ctrl+Shift+D |
+| Obere Seitentaste beim Daumen | Smart Action „Sprachchat starten“, Ctrl+Shift+V |
 | Mitteltaste | Zu einem Chat wechseln, der Aufmerksamkeit benötigt |
 | Daumenrad links/rechts | Vorheriger/nächster Chat |
-| Haptische Ring-Taste | Codex Actions Ring mit acht Aktionen |
+| Haptische Daumenfläche | Codex Actions Ring mit acht Aktionen |
 
-Enter wirkt auf das aktuell fokussierte Element. Das Daumenrad folgt der Codex-Reihenfolge und begrenzt sich nicht auf laufende Chats. Die Gestentaste sendet Cmd+N, wartet 750 ms und sendet Ctrl+Shift+V. Ctrl+Shift+V allein schaltet den Sprachchat im aktuellen Chat um. Die Folge ist als native Smart Action gespeichert. Falls der neue Chat auf deinem Mac länger zum Öffnen braucht, kannst du die Wartezeit unter Options+ → Smart Actions ändern.
+Enter wirkt auf das aktuell fokussierte Element. Das Daumenrad folgt der Codex-Reihenfolge und begrenzt sich nicht auf laufende Chats. „Sprachchat starten“ sendet nur Ctrl+Shift+V und startet den Sprachchat im aktuellen Chat. Das Kürzel schaltet den Sprachchat um; ein weiterer Tastendruck kann einen laufenden Sprachchat beenden. „Diktieren starten“ sendet Ctrl+Shift+D und kann eine laufende Diktierung ebenfalls stoppen.
+
+Der Actions Ring liegt auf der haptischen Daumenfläche. Die obere Seitentaste startet den Sprachchat. Die frühere Smart Action „Codex – Neuer Sprachchat“ wird beim Upgrade entfernt. Falls sie außerhalb des Codex-Profils noch zugewiesen ist, stoppt die Installation vor Änderungen. Unabhängige Smart Actions bleiben erhalten.
 
 Im geprüften Codex-Build ist Diktieren standardmäßig unbelegt. Der Installer setzt `globalDictationSingleTap` auf Ctrl+Shift+D. Dieses Kürzel wird von Codex systemweit registriert. Bei fehlenden macOS-Freigaben öffne Codex → Einstellungen → Tastaturkürzel, suche den Diktier-Eintrag und setze dort das Kürzel; der native Editor fordert die benötigten Freigaben an.
 
@@ -43,12 +45,12 @@ Der Installer zeigt den Sicherungsordner an. Setze dessen absoluten Pfad ein:
 ./codex-mx restore --backup '/Pfad/zur/Sicherung' --apply --restart-logitech
 ```
 
-Die Rücknahme erhält unabhängige Änderungen, die du später vorgenommen hast. Die beobachtete automatische Normalisierung der Smart Action durch Options+ wird erkannt: weggelassene Standardwerte und die Umwandlung der Entwickler-Kategorie. Nicht erkannte Änderungen bleiben Konflikte. Wurde eine verwaltete Belegung später geändert, meldet sie einen Konflikt und schreibt nichts. Sicherungen enthalten lokale Einstellungen; veröffentliche sie nicht auf GitHub.
+Die Rücknahme erhält unabhängige Änderungen, die du später vorgenommen hast. Die beobachtete automatische Normalisierung der verwalteten Tastenbelegungen und Smart Actions durch Options+ wird erkannt: weggelassene Standardwerte und die Umwandlung der Entwickler-Kategorie. Normale Änderungen des Nutzungszählers blockieren die Rücknahme nicht; Zähler bereits vorhandener Aktionen bleiben erhalten. Nicht erkannte Änderungen an verwalteten Werten bleiben Konflikte. Wurde eine verwaltete Belegung später geändert, meldet sie einen Konflikt und schreibt nichts. Sicherungen enthalten lokale Einstellungen; veröffentliche sie nicht auf GitHub.
 
 Auch die Rücknahme prüft die App-Versionen. Nach einem Update auf eine noch ungeprüfte Version stoppt sie ebenfalls. Bewahre die Sicherung bis zur Prüfung dieser Version oder für eine sorgfältige manuelle Wiederherstellung auf.
 
 ## Entwicklungsstand
 
-Version 0.1.2 ist experimentell, weil der automatische Installer interne Dateiformate verwendet. Der echte Ring-Import, die korrigierte Installation auf einem Mac, die von Logitech eingelesenen Daten und eine anschließend unveränderte Vorschau wurden geprüft. Schreibfehler, parallele Änderungen und Rücknahme sind mit separaten Testdateien geprüft. Die tatsächlichen Mausaktionen sowie Sprache und Diktieren müssen nach dem Codex-Neustart noch am Gerät bestätigt werden. Unbekannte App-Versionen werden vor Änderungen abgelehnt.
+Version 0.1.3 ist experimentell, weil der automatische Installer interne Dateiformate verwendet. Der echte Ring-Import, die Installation auf einem Mac, die von Logitech eingelesenen Daten und eine anschließend unveränderte Vorschau wurden geprüft. Schreibfehler, parallele Änderungen und Rücknahme sind mit separaten Testdateien geprüft. Die tatsächlichen Mausaktionen sowie Sprache und Diktieren müssen noch am Gerät bestätigt werden. Unbekannte App-Versionen werden vor Änderungen abgelehnt.
 
-Für den manuellen Weg stehen das `.lp5`-Ringprofil und acht einzeln importierbare Smart Actions unter `assets/` bereit. Eine offizielle universelle Options+-Importdatei für alle physischen Tasten ist dieses Paket nicht.
+Für den manuellen Weg stehen das `.lp5`-Ringprofil mit acht Ring-Aktionen und sieben einzeln importierbare Smart Actions unter `assets/` bereit. Weise „Diktieren starten“ der Zurück-Taste, „Sprachchat starten“ der oberen Seitentaste und „Actions Ring anzeigen“ der haptischen Daumenfläche zu. Eine offizielle universelle Options+-Importdatei für alle physischen Tasten ist dieses Paket nicht.
