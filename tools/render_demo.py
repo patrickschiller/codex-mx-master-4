@@ -17,21 +17,21 @@ WIDTH, HEIGHT = 1280, 720
 BG, INK, MUTED = "#F4F5F1", "#192D26", "#65756C"
 GREEN, LIGHT, BORDER = "#287653", "#DCEFE3", "#DCE3DC"
 SCENES = [
-    (0, 3, "Codex mit deiner MX Master 4", "Ein Handgriff. Die passende Aktion.", None),
-    (3, 8, "Diktieren starten", "Zurück-Taste  ·  Ctrl + Shift + D", "back"),
-    (8, 13, "Sprachchat starten", "Obere Seitentaste  ·  Ctrl + Shift + V", "voice"),
-    (13, 18, "Bestätigen mit Enter", "Vor-Taste  ·  Das gewünschte Element hat Fokus", "forward"),
-    (18, 23, "Zwischen Chats wechseln", "Daumenrad  ·  Cmd + Option + Pfeil links / rechts", "wheel"),
-    (23, 29, "Actions Ring öffnen", "Haptische Daumentaste  ·  Acht Aktionen unter dem Daumen", "ring"),
-    (29, 32, "Alles direkt an deiner Maus", "Diktieren. Sprechen. Bestätigen. Navigieren.", None),
+    (0, 3, "Codex with your MX Master 4", "One click. The right action.", None),
+    (3, 8, "Start dictation", "Back button  ·  Ctrl + Shift + D", "back"),
+    (8, 13, "Start voice chat", "Upper side button  ·  Ctrl + Shift + V", "voice"),
+    (13, 18, "Confirm with Enter", "Forward button  ·  Focus the control you want to confirm", "forward"),
+    (18, 23, "Switch between chats", "Thumb wheel  ·  Cmd + Option + Left / Right Arrow", "wheel"),
+    (23, 29, "Open the Actions Ring", "Haptic thumb pad  ·  Eight actions under your thumb", "ring"),
+    (29, 32, "Your shortcuts, right at your fingertips", "Dictate. Talk. Confirm. Navigate.", None),
 ]
 CONTROLS = {
-    "voice": (186, 357, "Obere Seitentaste"),
-    "forward": (208, 417, "Vor-Taste"),
-    "back": (208, 486, "Zurück-Taste"),
-    "wheel": (248, 451, "Daumenrad"),
-    "attention": (284, 282, "Mitteltaste"),
-    "ring": (143, 464, "Haptische Daumentaste"),
+    "voice": (186, 357, "Upper side button"),
+    "forward": (208, 417, "Forward button"),
+    "back": (208, 486, "Back button"),
+    "wheel": (248, 451, "Thumb wheel"),
+    "attention": (284, 282, "Middle button"),
+    "ring": (143, 464, "Haptic thumb pad"),
 }
 
 
@@ -60,7 +60,7 @@ class Demo:
         self.draw = ImageDraw.Draw(self.image)
         self.rect((40, 153, 419, 627), fill="#FFFFFF", radius=24, outline=BORDER)
         self.text((61, 180), "MX Master 4", 18, bold=True)
-        self.text((61, 205), "Schematische Darstellung", 14, color=MUTED)
+        self.text((61, 205), "Schematic illustration", 14, color=MUTED)
         self.mouse()
         self.base = self.image.copy()
 
@@ -72,7 +72,7 @@ class Demo:
 
     def text(self, point, text, size=22, color=INK, bold=False, anchor=None):
         self.draw.text(tuple(x*self.scale for x in point), text, fill=color,
-                       font=self.font(size, bold), anchor=anchor, spacing=5*self.scale)
+                       font=self.font(size, bold), anchor=anchor, align="center" if anchor=="mm" else "left", spacing=5*self.scale)
 
     def rect(self, box, fill, radius=12, outline=None, width=1):
         self.draw.rounded_rectangle(tuple(round(x*self.scale) for x in box), radius=radius*self.scale,
@@ -131,22 +131,22 @@ class Demo:
         self.rect((614,155,637,625), fill="#EEF2ED", radius=0)
         self.text((474,189), "CODEX", 17, bold=True)
         self.text((474,229), "Chats", 15, color=MUTED)
-        for i, label in enumerate(("Website","Tests","Dokumentation")):
+        for i, label in enumerate(("Website","Tests","Documentation")):
             y = 252 + i*65
             if label == selected: self.rect((464,y,622,y+48), LIGHT, radius=10)
             self.text((480,y+24), label, 17, bold=label==selected, anchor="lm")
             if label == "Tests": self.circle((607,y+24),4,fill="#C28632")
         self.text((666,186), selected, 20, bold=True)
         self.line([(654,215),(1220,215)],BORDER,1)
-        self.text((666,240), "Beispielchat", 15, color=MUTED)
+        self.text((666,240), "Example chat", 15, color=MUTED)
         if attention:
             self.rect((681,326,1193,420), "#FFF3DD", radius=15)
-            self.text((704,350), "Dieser Chat braucht dich.", 23, bold=True)
-            self.text((704,386), "Eine Rückmeldung wartet.", 19, color=MUTED)
+            self.text((704,350), "This chat needs you.", 23, bold=True)
+            self.text((704,386), "A response is waiting.", 19, color=MUTED)
 
     def composer(self, text="", status=None):
         self.rect((665,513,1220,604), "#FAFCF9", radius=15, outline=BORDER)
-        self.text((687,539), text or "Nachricht schreiben …", 19, color=INK if text else MUTED)
+        self.text((687,539), text or "Write a message …", 19, color=INK if text else MUTED)
         self.circle((1186,574),14,fill=GREEN if text else "#D8E1D9")
         self.text((1186,574), "↑", 19, color="#FFFFFF", bold=True, anchor="mm")
         if status: self.text((687,580), status, 15, color=GREEN)
@@ -169,7 +169,7 @@ class Demo:
 
     def ring(self, local):
         center=(934,414)
-        labels=("Plan-\nModus","Fast-\nModus","Chat\nverzweigen","Denk-\naufwand +", "Denk-\naufwand −","Mikro\nstumm","Review","Aufmerk-\nsamkeit")
+        labels=("Plan\nmode","Fast\nmode","Fork\nchat","Reasoning\n+", "Reasoning\n−","Mute\nmic","Review","Needs\nattention")
         self.circle(center,130,fill="#F0F6F0",outline="#D0E3D5",width=2)
         chosen=min(7,max(0,int((local-1.2)*1.3)))
         for i,label in enumerate(labels):
@@ -185,8 +185,8 @@ class Demo:
 
     def overview(self):
         self.app()
-        self.text((670,283), "Direkt unter deinen Fingern", 26, bold=True)
-        rows=("Zurück   →   Diktieren starten", "Oben   →   Sprachchat starten", "Daumentaste   →   Actions Ring", "Vor   →   Enter", "Daumenrad   →   Chats wechseln", "Mitteltaste   →   Aufmerksamkeit")
+        self.text((670,283), "Your shortcuts, within reach", 26, bold=True)
+        rows=("Back   →   Start dictation", "Upper side   →   Start voice chat", "Haptic pad   →   Actions Ring", "Forward   →   Enter", "Thumb wheel   →   Switch chats", "Middle   →   Needs attention")
         for i,row in enumerate(rows):
             self.circle((680,336+i*43),4,fill=GREEN)
             self.text((697,336+i*43),row,22,anchor="lm")
@@ -195,56 +195,56 @@ class Demo:
         self.image=self.base.copy(); self.draw=ImageDraw.Draw(self.image)
         index=next(i for i,scene in enumerate(SCENES) if scene[0]<=t<scene[1])
         start,end,title,subtitle,control=SCENES[index]; local=t-start
-        footer="Animierte Erklärung  ·  Beispielansicht  ·  Codex im Vordergrund"
+        footer="Animated explanation  ·  Example view  ·  Codex in the foreground"
         if index in (0,6):
             self.overview()
         elif index==1:
-            self.app(); phrase="Erstelle eine übersichtliche Startseite."
+            self.app(); phrase="Create a clear and simple home page."
             amount=max(0,min(len(phrase),int((local-0.8)*len(phrase)/2.9)))
-            self.text((942,347),"Diktieren läuft",26,bold=True,anchor="mm")
+            self.text((942,347),"Dictation is on",26,bold=True,anchor="mm")
             self.wave((943,412),local)
-            self.composer(phrase[:amount],"Sprache wird zu Text")
-            footer="Diktieren starten  ·  Erneut drücken: stoppen"
+            self.composer(phrase[:amount],"Speech becomes text")
+            footer="Start dictation  ·  Press again to stop"
         elif index==2:
             self.app()
             self.circle((942,365),62,fill=LIGHT)
             self.wave((942,365),local,width=81)
-            self.text((942,471),"Sprachchat läuft",28,bold=True,anchor="mm")
-            self.text((942,515),"Im aktuellen Chat",20,color=MUTED,anchor="mm")
-            footer="Sprachchat starten  ·  Erneut drücken: stoppen"
+            self.text((942,471),"Voice chat is active",28,bold=True,anchor="mm")
+            self.text((942,515),"In the current chat",20,color=MUTED,anchor="mm")
+            footer="Start voice chat  ·  Press again to stop"
         elif index==3:
             self.app(); self.composer()
             self.rect((685,296,1190,371),"#F0F4EF",radius=15)
-            self.text((706,332),"Die Änderung ist vorbereitet.",23,anchor="lm")
+            self.text((706,332),"The change is ready.",23,anchor="lm")
             if local<1.8:
                 self.rect((863,401,1069,457),"#FFFFFF",radius=13,outline=GREEN,width=3)
-                self.text((966,429),"Bestätigen",23,bold=True,anchor="mm")
-                self.text((966,483),"Fokus auf dieser Schaltfläche",17,color=MUTED,anchor="mm")
+                self.text((966,429),"Confirm",23,bold=True,anchor="mm")
+                self.text((966,483),"This button has focus",17,color=MUTED,anchor="mm")
             else:
                 self.rect((863,401,1069,457),GREEN,radius=13)
-                self.text((966,429),"Bestätigt",23,color="#FFFFFF",bold=True,anchor="mm")
-            footer="Enter wirkt auf das fokussierte Element."
+                self.text((966,429),"Confirmed",23,color="#FFFFFF",bold=True,anchor="mm")
+            footer="Enter acts on the focused control."
         elif index==4:
             attention=local>=3.1
-            selected="Website" if local<1 else "Tests" if local<2 else "Dokumentation"
-            if attention: selected="Tests"; control="attention"; title="Chats mit Handlungsbedarf öffnen"; subtitle="Mitteltaste  ·  Cmd + Option + A"
+            selected="Website" if local<1 else "Tests" if local<2 else "Documentation"
+            if attention: selected="Tests"; control="attention"; title="Open a chat that needs attention"; subtitle="Middle button  ·  Cmd + Option + A"
             self.app(selected,attention)
             if not attention:
-                self.text((943,364),"←   Chat wechseln   →",27,bold=True,anchor="mm")
-                self.text((943,409),"Vorheriger / nächster Chat",21,color=MUTED,anchor="mm")
+                self.text((943,364),"←   Switch chat   →",27,bold=True,anchor="mm")
+                self.text((943,409),"Previous / next chat",21,color=MUTED,anchor="mm")
             self.composer()
-            footer="Navigation folgt der Codex-Reihenfolge; alle Chats."
+            footer="Follows Codex's navigation order across all chats."
         else:
             self.app(); self.ring(local)
-            footer="Haptische Daumentaste drücken  →  Aktion im Ring wählen"
+            footer="Press the haptic thumb pad  →  Choose an action"
         if control: self.highlight(control,local)
         else:
-            self.text((229,596),"Sechs Bedienelemente",21,bold=True,anchor="mm")
+            self.text((229,596),"Six mouse controls",21,bold=True,anchor="mm")
         self.text((48,32),"CODEX  ×  MX MASTER 4",16,bold=True,color=GREEN)
         self.text((48,72),title,36,bold=True)
         self.text((50,119),subtitle,19,color=MUTED)
         self.rect((1051,26,1234,60),LIGHT,radius=17)
-        self.text((1142,43),"Animierte Erklärung",15,bold=True,color=GREEN,anchor="mm")
+        self.text((1142,43),"Animated explanation",15,bold=True,color=GREEN,anchor="mm")
         self.text((50,665),footer,18,color=MUTED)
         self.text((1230,665),f"{index+1:02d} / 07",17,color=MUTED,anchor="rm")
         self.rect((48,704,1232,708),"#DFE7DF",radius=2)

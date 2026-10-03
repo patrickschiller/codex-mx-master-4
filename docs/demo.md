@@ -1,52 +1,52 @@
-# Die Mausbelegung in 32 Sekunden
+# The mouse controls in 32 seconds
 
-[Video als MP4 herunterladen](https://github.com/patrickschiller/codex-mx-master-4/releases/download/v0.1.3/codex-mx-master-4-demo.mp4) · [Animierte GIF ansehen](media/codex-mx-master-4-demo.gif) · [Zur Anleitung](installation-de.md)
+[Download the MP4 video](https://github.com/patrickschiller/codex-mx-master-4/releases/download/v0.1.3/codex-mx-master-4-demo.mp4) · [View the animated GIF](media/codex-mx-master-4-demo.gif) · [Installation guide in German](installation-de.md)
 
-Die Animation erklärt die Belegung der MX Master 4 für Codex auf macOS. Sie verwendet deutsche Texteinblendungen und hat keinen Ton. Maus und App sind vereinfachte Illustrationen; das Video enthält keine privaten Chats und zeigt keinen aufgezeichneten Test am Gerät.
+The animation explains the MX Master 4 controls for Codex on macOS. All captions are in English, and the video has no sound. The mouse and app are simplified illustrations; the video contains no private chats or recorded hardware test.
 
-## Textfassung
+## Transcript
 
-| Zeit | Gezeigte Funktion |
+| Time | Function shown |
 | --- | --- |
-| 0–3 Sekunden | Überblick: Codex mit der MX Master 4 bedienen. Die Maus links und ein Beispielchat rechts zeigen, welche Taste welche Aktion auslöst. |
-| 3–8 Sekunden | **Zurück-Taste → Diktieren starten.** `Ctrl+Shift+D` startet die Texteingabe per Sprache. Die gesprochenen Wörter erscheinen im Eingabefeld. Erneutes Drücken kann das Diktieren stoppen. |
-| 8–13 Sekunden | **Obere Daumen-Seitentaste → Sprachchat starten.** `Ctrl+Shift+V` startet den Sprachchat im aktuellen Chat. Erneutes Drücken kann einen aktiven Sprachchat stoppen. |
-| 13–18 Sekunden | **Vor-Taste → Enter.** Die Taste bestätigt ein fokussiertes Bestätigungsfeld oder sendet den Text, wenn das Chat-Eingabefeld den Fokus hat. |
-| 18–23 Sekunden | **Daumenrad → vorheriger oder nächster Chat.** `Cmd+Option+Links/Rechts` folgt der Navigationsreihenfolge von Codex. **Mittlere Taste → Chat mit Handlungsbedarf**, über `Cmd+Option+A`. |
-| 23–29 Sekunden | **Haptische Daumenfläche → Actions Ring anzeigen.** Der Ring bietet Planmodus, Fast-Modus, Chat abzweigen, Denkleistung erhöhen, Denkleistung verringern, Mikrofon stummschalten, Review und Handlungsbedarf. |
-| 29–32 Sekunden | Die Belegung im Überblick: Diktieren, Sprachchat, Enter, Chatwechsel und Actions Ring direkt an der Maus. |
+| 0–3 seconds | Overview: control Codex with the MX Master 4. The mouse on the left and a sample chat on the right show which control triggers each action. |
+| 3–8 seconds | **Back button → Start dictation.** `Ctrl+Shift+D` starts speech-to-text input. Spoken words appear in the composer. Pressing again can stop dictation. |
+| 8–13 seconds | **Upper thumb-side button → Start voice chat.** `Ctrl+Shift+V` starts voice in the current chat. Pressing again can stop an active voice chat. |
+| 13–18 seconds | **Forward button → Enter.** The button confirms a focused confirmation control or sends text when the chat composer has focus. |
+| 18–23 seconds | **Thumb wheel → Previous or next chat.** `Cmd+Option+Left/Right` follows Codex's navigation order. **Middle button → Chat needing attention**, using `Cmd+Option+A`. |
+| 23–29 seconds | **Haptic thumb pad → Open Actions Ring.** The ring offers Plan mode, Fast mode, Fork chat, Increase reasoning effort, Decrease reasoning effort, Mute microphone, Review and Needs attention. |
+| 29–32 seconds | The controls at a glance: dictation, voice chat, Enter, chat navigation and Actions Ring, all on the mouse. |
 
-Die Mausbelegung gilt, während Codex die aktive Anwendung ist. Das Daumenrad navigiert zwischen Chats gemäß Codex-Reihenfolge; es filtert keine laufenden Sessions. Die hinterlegten Diktier- und Sprachkürzel schalten die jeweilige Funktion um. Welche Aktion verfügbar ist, hängt vom aktuellen Codex-Fenster und Zustand ab.
+The mouse assignments apply while Codex is the active application. The thumb wheel follows Codex's chat order; it does not filter to running sessions. The dictation and voice shortcuts toggle their respective functions. Action availability depends on the current Codex screen and state.
 
-## Belegung und Tastenkürzel
+## Controls and shortcuts
 
-| Bedienelement | Aktion | Tastenkürzel |
+| Control | Action | Shortcut |
 | --- | --- | --- |
-| Zurück-Taste | Diktieren starten | `Ctrl+Shift+D` |
-| Obere Daumen-Seitentaste | Sprachchat starten im aktuellen Chat | `Ctrl+Shift+V` |
-| Vor-Taste | Bestätigen oder senden bei passendem Fokus | `Enter` |
-| Mittlere Taste | Chat mit Handlungsbedarf öffnen | `Cmd+Option+A` |
-| Daumenrad links / rechts | Vorheriger / nächster Chat | `Cmd+Option+Links/Rechts` |
-| Haptische Daumenfläche | Actions Ring anzeigen | Native Options+-Aktion |
+| Back button | Start dictation | `Ctrl+Shift+D` |
+| Upper thumb-side button | Start voice chat in the current chat | `Ctrl+Shift+V` |
+| Forward button | Confirm or send when the relevant control has focus | `Enter` |
+| Middle button | Open a chat needing attention | `Cmd+Option+A` |
+| Thumb wheel left / right | Previous / next chat | `Cmd+Option+Left/Right` |
+| Haptic thumb pad | Open Actions Ring | Native Options+ action |
 
-| Aktion im Ring | Tastenkürzel |
+| Ring action | Shortcut |
 | --- | --- |
-| Planmodus | `Ctrl+Option+Shift+P` |
-| Fast-Modus | `Ctrl+Option+Shift+F` |
-| Chat abzweigen | `Ctrl+Option+Shift+B` |
-| Denkleistung erhöhen | `Ctrl+Option+Shift+Pfeil hoch` |
-| Denkleistung verringern | `Ctrl+Option+Shift+Pfeil runter` |
-| Mikrofon stummschalten / Stummschaltung aufheben | `Ctrl+Option+Shift+M` |
+| Plan mode | `Ctrl+Option+Shift+P` |
+| Fast mode | `Ctrl+Option+Shift+F` |
+| Fork chat | `Ctrl+Option+Shift+B` |
+| Increase reasoning effort | `Ctrl+Option+Shift+Up` |
+| Decrease reasoning effort | `Ctrl+Option+Shift+Down` |
+| Mute / unmute microphone | `Ctrl+Option+Shift+M` |
 | Review | `Ctrl+Shift+G` |
-| Handlungsbedarf | `Cmd+Option+A` |
+| Needs attention | `Cmd+Option+A` |
 
-Die Animation erklärt die konfigurierte Logik. Hinweise zur Installation, zu erforderlichen Berechtigungen und zur Aktivierung neuer Codex-Kürzel stehen in der [Installationsanleitung](installation-de.md).
+The animation explains the configured behavior. See the [installation guide in German](installation-de.md) for setup, required permissions and activation of newly installed Codex shortcuts.
 
-## Animation neu erzeugen
+## Recreate the animation
 
-Das optionale Werkzeug [tools/render_demo.py](../tools/render_demo.py) zeichnet alle Szenen selbst. Es liest keine Bildschirmaufnahme oder persönlichen Einstellungen. Benötigt werden Python mit Pillow, FFmpeg mit `libx264` sowie Arial oder DejaVu Sans. Geprüft wurde die Ausgabe mit Pillow 12.3.0 und FFmpeg 9.0.2; diese Werkzeuge werden ausschließlich zum Erstellen der Demo benötigt.
+The optional [tools/render_demo.py](../tools/render_demo.py) script draws every scene itself. It does not read screen recordings or personal settings. It requires Python with Pillow, FFmpeg with `libx264`, and Arial or DejaVu Sans. Output has been checked with Pillow 12.3.0 and FFmpeg 9.0.2; these tools are needed only to create the demo.
 
-Im Projektordner:
+From the project directory:
 
 ```sh
 python3 tools/render_demo.py \
@@ -54,4 +54,4 @@ python3 tools/render_demo.py \
   --gif docs/media/codex-mx-master-4-demo.gif
 ```
 
-Die MP4 hat 1280 × 720 Pixel, 24 Bilder pro Sekunde und H.264 mit `yuv420p`. Die GIF-Vorschau hat 960 × 540 Pixel und 12 Bilder pro Sekunde. Beide dauern 32 Sekunden. Mit `--previews /Pfad/zum/Vorschauordner` lassen sich zusätzlich sieben Szenenbilder für die Sichtprüfung speichern. Das README zeigt die GIF; die verlinkte MP4 liegt als Asset beim Release v0.1.3.
+The MP4 is 1280 × 720 pixels at 24 frames per second, encoded as H.264 with `yuv420p`. The GIF preview is 960 × 540 pixels at 12 frames per second. Both last 32 seconds. Use `--previews /path/to/preview-directory` to save seven scene images for visual inspection. The README displays the GIF; the linked MP4 is an asset on release v0.1.3.

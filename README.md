@@ -2,17 +2,19 @@
 
 Configure a Logitech MX Master 4 for the Codex desktop app on macOS in one command, with a preview, private backups and scoped restoration.
 
+Dictate text, start a voice chat, confirm prompts, switch chats and open an eight-action ring directly from the mouse.
+
 **Experimental v0.1.3.** Uses the locally verified Options+ and Logi Plugin Service file formats. This is a community tool, not an official Logitech or OpenAI installer. The native ring archive has been imported successfully through Options+. Installation, native persistence and a subsequent unchanged preview have been verified on a Mac. Physical mouse events and voice/dictation activation still require a user check.
 
-[Deutsche Anleitung](docs/installation-de.md)
+[Installation guide in German](docs/installation-de.md)
 
 ## See it in 32 seconds
 
 [![Animated explanation: dictate with the back button, start voice in the current chat, confirm with Enter, switch chats with the thumb wheel and open the ring with the haptic thumb pad.](docs/media/codex-mx-master-4-demo.gif)](https://github.com/patrickschiller/codex-mx-master-4/releases/download/v0.1.3/codex-mx-master-4-demo.mp4)
 
-[Download the MP4 video](https://github.com/patrickschiller/codex-mx-master-4/releases/download/v0.1.3/codex-mx-master-4-demo.mp4) · [Text transcript in German](docs/demo.md)
+[Download the MP4 video](https://github.com/patrickschiller/codex-mx-master-4/releases/download/v0.1.3/codex-mx-master-4-demo.mp4) · [English transcript and video details](docs/demo.md)
 
-Animated explanation in German, without sound; no private chats or recorded hardware test. The mouse and app are simplified illustrations.
+A 32-second animated explanation in English, without sound. The mouse and app are simplified illustrations; the demo contains no private chats or recorded hardware test.
 
 ## Install
 
@@ -46,13 +48,13 @@ These assignments apply only while Codex is the active application.
 | Control | Action | Shortcut |
 | --- | --- | --- |
 | Forward button | Confirm / send | Enter |
-| Back button | Diktieren starten | Ctrl+Shift+D |
-| Upper thumb-side button | Sprachchat starten in the current chat | Ctrl+Shift+V |
+| Back button | Start dictation | Ctrl+Shift+D |
+| Upper thumb-side button | Start voice chat in the current chat | Ctrl+Shift+V |
 | Middle button | Jump to a chat needing attention | Cmd+Option+A |
 | Thumb wheel left / right | Previous / next chat | Cmd+Option+Left / Right |
 | Haptic thumb pad | Open the Codex ring | Native Actions Ring |
 
-Enter acts on the currently focused Codex control. Use it when the confirmation button or chat composer has focus. Chat navigation follows Codex's navigation order; it does not filter to running chats. The back and upper thumb-side buttons reference the native Smart Actions named **Diktieren starten** and **Sprachchat starten**. Voice starts in the current chat. The underlying shortcuts toggle their actions, so pressing the button again can stop an active dictation or voice call.
+Enter acts on the currently focused Codex control. Use it when the confirmation button or chat composer has focus. Chat navigation follows Codex's navigation order; it does not filter to running chats. The back and upper thumb-side buttons use native Smart Actions to start dictation and voice chat. Voice starts in the current chat. The underlying shortcuts toggle their actions, so pressing the button again can stop an active dictation or voice call.
 
 The Actions Ring belongs on the haptic thumb pad, not the upper thumb-side button. Upgrading replaces the old new-chat voice sequence with the two actions above and removes its managed Smart Action. If that legacy action is still referenced outside the managed buttons, installation stops before changing anything. Repairing either current Smart Action also stops if it would change an action referenced by another application profile.
 
@@ -88,7 +90,7 @@ Restoration uses the same version checks. If your applications have since update
 
 ## Manual import
 
-`assets/Codex-MX-Master-4.lp5` is an Actions Ring profile with eight actions. Import it through the Options+ profile importer. The seven separate JSON files in `assets/Smart-Actions/` are optional native Smart Actions imports, including **Diktieren starten**, **Sprachchat starten** and Escape. The automatic installer merges the dictation and voice actions into `macros.db` and references them through native `MACRO_REF` cards. The remaining imports are optional. There is no action that opens a new chat before starting voice.
+`assets/Codex-MX-Master-4.lp5` is an Actions Ring profile with eight actions. Import it through the Options+ profile importer. The seven separate JSON files in `assets/Smart-Actions/` are optional native Smart Actions imports for functions including dictation, voice chat and Escape. The automatic installer merges the dictation and voice actions into `macros.db` and references them through native `MACRO_REF` cards. The remaining imports are optional. There is no action that opens a new chat before starting voice.
 
 The six custom ring shortcuts still require the Codex keybindings. See the [format notes](docs/codex-keybindings.md) and [Logitech format notes](docs/logitech-format.md).
 
