@@ -6,6 +6,14 @@ Configure a Logitech MX Master 4 for the Codex desktop app on macOS in one comma
 
 [Deutsche Anleitung](docs/installation-de.md)
 
+## See it in 32 seconds
+
+[![Animated explanation: dictate with the back button, start voice in the current chat, confirm with Enter, switch chats with the thumb wheel and open the ring with the haptic thumb pad.](docs/media/codex-mx-master-4-demo.gif)](https://github.com/patrickschiller/codex-mx-master-4/releases/download/v0.1.3/codex-mx-master-4-demo.mp4)
+
+[Download the MP4 video](https://github.com/patrickschiller/codex-mx-master-4/releases/download/v0.1.3/codex-mx-master-4-demo.mp4) · [Text transcript in German](docs/demo.md)
+
+Animated explanation in German, without sound; no private chats or recorded hardware test. The mouse and app are simplified illustrations.
+
 ## Install
 
 Requirements: Python 3.9+, Options+ already set up with your MX Master 4, and the Codex desktop app. Open the Actions Ring once before running the preview. No Python packages, API key or administrator privileges are needed.
