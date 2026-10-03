@@ -1,0 +1,36 @@
+{
+  "id": "704bbfca-4f8e-4dc8-a383-6a96a4d1ec95",
+  "name": "Codex – Chat mit Handlungsbedarf",
+  "description": "Zum nächsten Chat mit Handlungsbedarf wechseln (Command + Option + A).",
+  "state": "ACTIVE",
+  "originType": "SHARED",
+  "platform": "OSX",
+  "lastEditTimestamp": "1791029318",
+  "categories": [
+    "FOR_DEVELOPERS"
+  ],
+  "cards": [
+    {
+      "id": "dbff99c2-e26a-4c73-a254-8b33120ac1a7",
+      "name": "⌘⌥A",
+      "attribute": "MACRO_PLAYBACK",
+      "readOnly": false,
+      "continuous": false,
+      "tags": [
+        "PRESET_TAG_KEY_OR_BUTTON"
+      ],
+      "macro": {
+        "type": "KEYSTROKE",
+        "keystroke": {
+          "code": 4,
+          "modifiers": [
+            227,
+            226
+          ]
+        },
+        "actionName": "⌘⌥A",
+        "onboardable": false
+      }
+    }
+  ]
+}

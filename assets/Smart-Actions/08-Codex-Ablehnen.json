@@ -1,0 +1,33 @@
+{
+  "id": "bb519ef8-5ea7-4caf-b9a8-c2e6b0cb89b8",
+  "name": "Codex – Ablehnen",
+  "description": "Escape: offene Anfrage ablehnen bzw. aktuelles Menü schließen.",
+  "state": "ACTIVE",
+  "originType": "SHARED",
+  "platform": "OSX",
+  "lastEditTimestamp": "1791029318",
+  "categories": [
+    "FOR_DEVELOPERS"
+  ],
+  "cards": [
+    {
+      "id": "cb53008e-2f46-4457-848e-b5ad63d9ad9b",
+      "name": "Esc",
+      "attribute": "MACRO_PLAYBACK",
+      "readOnly": false,
+      "continuous": false,
+      "tags": [
+        "PRESET_TAG_KEY_OR_BUTTON"
+      ],
+      "macro": {
+        "type": "KEYSTROKE",
+        "keystroke": {
+          "code": 41,
+          "modifiers": []
+        },
+        "actionName": "Esc",
+        "onboardable": false
+      }
+    }
+  ]
+}

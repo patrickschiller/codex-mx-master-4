@@ -1,0 +1,36 @@
+{
+  "id": "e9b110f8-61e0-48f8-8c29-d9a02ad00a4a",
+  "name": "Codex – Nächster Chat",
+  "description": "Zum nächsten Chat wechseln (Command + Option + Pfeil rechts).",
+  "state": "ACTIVE",
+  "originType": "SHARED",
+  "platform": "OSX",
+  "lastEditTimestamp": "1791029318",
+  "categories": [
+    "FOR_DEVELOPERS"
+  ],
+  "cards": [
+    {
+      "id": "7779e108-9157-4fdd-aaf4-ac7dffef1b91",
+      "name": "⌘⌥→",
+      "attribute": "MACRO_PLAYBACK",
+      "readOnly": false,
+      "continuous": false,
+      "tags": [
+        "PRESET_TAG_KEY_OR_BUTTON"
+      ],
+      "macro": {
+        "type": "KEYSTROKE",
+        "keystroke": {
+          "code": 79,
+          "modifiers": [
+            227,
+            226
+          ]
+        },
+        "actionName": "⌘⌥→",
+        "onboardable": false
+      }
+    }
+  ]
+}

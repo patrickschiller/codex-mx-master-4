@@ -1,0 +1,36 @@
+{
+  "id": "0ac4534a-c1b7-4bc3-ae0d-589abf4dd4a3",
+  "name": "Codex – Sprachchat",
+  "description": "Sprachchat im aktuellen Codex-Chat starten (Control + Shift + V).",
+  "state": "ACTIVE",
+  "originType": "SHARED",
+  "platform": "OSX",
+  "lastEditTimestamp": "1791029318",
+  "categories": [
+    "FOR_DEVELOPERS"
+  ],
+  "cards": [
+    {
+      "id": "905546c9-d43c-417f-879e-5caa24fdb04e",
+      "name": "⌃⇧V",
+      "attribute": "MACRO_PLAYBACK",
+      "readOnly": false,
+      "continuous": false,
+      "tags": [
+        "PRESET_TAG_KEY_OR_BUTTON"
+      ],
+      "macro": {
+        "type": "KEYSTROKE",
+        "keystroke": {
+          "code": 25,
+          "modifiers": [
+            224,
+            225
+          ]
+        },
+        "actionName": "⌃⇧V",
+        "onboardable": false
+      }
+    }
+  ]
+}

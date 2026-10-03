@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.venv/
+dist/
+build/
+*.egg-info/
+backups/
+settings.db*
+macros.db*
+.coverage

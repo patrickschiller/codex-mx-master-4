@@ -1,0 +1,36 @@
+{
+  "id": "4c80f88c-89ae-48a4-a554-8884491a4eae",
+  "name": "Codex – Vorheriger Chat",
+  "description": "Zum vorherigen Chat wechseln (Command + Option + Pfeil links).",
+  "state": "ACTIVE",
+  "originType": "SHARED",
+  "platform": "OSX",
+  "lastEditTimestamp": "1791029318",
+  "categories": [
+    "FOR_DEVELOPERS"
+  ],
+  "cards": [
+    {
+      "id": "5f1b3e37-98bf-4b7d-bc84-136dc40f60b3",
+      "name": "⌘⌥←",
+      "attribute": "MACRO_PLAYBACK",
+      "readOnly": false,
+      "continuous": false,
+      "tags": [
+        "PRESET_TAG_KEY_OR_BUTTON"
+      ],
+      "macro": {
+        "type": "KEYSTROKE",
+        "keystroke": {
+          "code": 80,
+          "modifiers": [
+            227,
+            226
+          ]
+        },
+        "actionName": "⌘⌥←",
+        "onboardable": false
+      }
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "id": "94a667c2-299a-427c-af92-36c1d496d8d1",
+  "name": "Codex – Diktieren",
+  "description": "Diktieren im aktuellen Codex-Chat starten (Control + Shift + D).",
+  "state": "ACTIVE",
+  "originType": "SHARED",
+  "platform": "OSX",
+  "lastEditTimestamp": "1791029318",
+  "categories": [
+    "FOR_DEVELOPERS"
+  ],
+  "cards": [
+    {
+      "id": "b8f22bf6-a818-4692-9ef5-5f595e780bce",
+      "name": "⌃⇧D",
+      "attribute": "MACRO_PLAYBACK",
+      "readOnly": false,
+      "continuous": false,
+      "tags": [
+        "PRESET_TAG_KEY_OR_BUTTON"
+      ],
+      "macro": {
+        "type": "KEYSTROKE",
+        "keystroke": {
+          "code": 7,
+          "modifiers": [
+            224,
+            225
+          ]
+        },
+        "actionName": "⌃⇧D",
+        "onboardable": false
+      }
+    }
+  ]
+}

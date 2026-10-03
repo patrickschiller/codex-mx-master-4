@@ -1,0 +1,33 @@
+{
+  "id": "33d0500c-d63c-417e-9681-290bf2dc24bc",
+  "name": "Codex – Bestätigen",
+  "description": "Return: Bestätigung annehmen oder Nachricht im fokussierten Codex-Chat senden.",
+  "state": "ACTIVE",
+  "originType": "SHARED",
+  "platform": "OSX",
+  "lastEditTimestamp": "1791029318",
+  "categories": [
+    "FOR_DEVELOPERS"
+  ],
+  "cards": [
+    {
+      "id": "7edcab2c-87f1-428f-8c39-ff691505d1f6",
+      "name": "Return",
+      "attribute": "MACRO_PLAYBACK",
+      "readOnly": false,
+      "continuous": false,
+      "tags": [
+        "PRESET_TAG_KEY_OR_BUTTON"
+      ],
+      "macro": {
+        "type": "KEYSTROKE",
+        "keystroke": {
+          "code": 40,
+          "modifiers": []
+        },
+        "actionName": "Return",
+        "onboardable": false
+      }
+    }
+  ]
+}
