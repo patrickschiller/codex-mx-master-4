@@ -43,12 +43,12 @@ Der Installer zeigt den Sicherungsordner an. Setze dessen absoluten Pfad ein:
 ./codex-mx restore --backup '/Pfad/zur/Sicherung' --apply --restart-logitech
 ```
 
-Die Rücknahme erhält unabhängige Änderungen, die du später vorgenommen hast. Wurde eine verwaltete Belegung später geändert, meldet sie einen Konflikt und schreibt nichts. Sicherungen enthalten lokale Einstellungen; veröffentliche sie nicht auf GitHub.
+Die Rücknahme erhält unabhängige Änderungen, die du später vorgenommen hast. Die beobachtete automatische Normalisierung der Smart Action durch Options+ wird erkannt: weggelassene Standardwerte und die Umwandlung der Entwickler-Kategorie. Nicht erkannte Änderungen bleiben Konflikte. Wurde eine verwaltete Belegung später geändert, meldet sie einen Konflikt und schreibt nichts. Sicherungen enthalten lokale Einstellungen; veröffentliche sie nicht auf GitHub.
 
 Auch die Rücknahme prüft die App-Versionen. Nach einem Update auf eine noch ungeprüfte Version stoppt sie ebenfalls. Bewahre die Sicherung bis zur Prüfung dieser Version oder für eine sorgfältige manuelle Wiederherstellung auf.
 
 ## Entwicklungsstand
 
-Version 0.1.1 ist experimentell, weil der automatische Installer interne Dateiformate verwendet. Der echte Ring-Import, die korrigierte Installation auf einem Mac, die von Logitech eingelesenen Daten und eine anschließend unveränderte Vorschau wurden geprüft. Schreibfehler, parallele Änderungen und Rücknahme sind mit separaten Testdateien geprüft. Die tatsächlichen Mausaktionen sowie Sprache und Diktieren müssen nach dem Codex-Neustart noch am Gerät bestätigt werden. Unbekannte App-Versionen werden vor Änderungen abgelehnt.
+Version 0.1.2 ist experimentell, weil der automatische Installer interne Dateiformate verwendet. Der echte Ring-Import, die korrigierte Installation auf einem Mac, die von Logitech eingelesenen Daten und eine anschließend unveränderte Vorschau wurden geprüft. Schreibfehler, parallele Änderungen und Rücknahme sind mit separaten Testdateien geprüft. Die tatsächlichen Mausaktionen sowie Sprache und Diktieren müssen nach dem Codex-Neustart noch am Gerät bestätigt werden. Unbekannte App-Versionen werden vor Änderungen abgelehnt.
 
 Für den manuellen Weg stehen das `.lp5`-Ringprofil und acht einzeln importierbare Smart Actions unter `assets/` bereit. Eine offizielle universelle Options+-Importdatei für alle physischen Tasten ist dieses Paket nicht.

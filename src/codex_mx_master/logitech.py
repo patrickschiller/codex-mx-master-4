@@ -106,6 +106,65 @@ def desired_macro_store(existing: dict, voice_info: dict) -> dict:
     return desired
 
 
+def align_native_macro_snapshot(installed: dict, current: dict) -> dict:
+    """Recognize native serialization of our otherwise unchanged Smart Action.
+
+    Keep runtime values, name, description and edit timestamp strict. Native
+    startup omits protobuf defaults and migrates the legacy developer category.
+    """
+    if any(not isinstance(doc.get("macro_infos"), dict) for doc in (installed, current)):
+        return installed
+    expected = installed["macro_infos"].get("macroInfos", [])
+    actual = current["macro_infos"].get("macroInfos", [])
+    if not isinstance(expected, list) or not isinstance(actual, list):
+        return installed
+    originals = [i for i in expected if isinstance(i, dict) and i.get("id") == VOICE_MACRO_ID]
+    natives = [i for i in actual if isinstance(i, dict) and i.get("id") == VOICE_MACRO_ID]
+    if len(originals) != 1 or len(natives) != 1:
+        return installed
+    left, right = copy.deepcopy(originals[0]), copy.deepcopy(natives[0])
+    category = right.get("customCategories", {})
+    custom = category.get("categories", []) if isinstance(category, dict) else None
+    if (left.get("categories") == ["FOR_DEVELOPERS"] and "categories" not in right
+            and isinstance(category, dict) and set(category) == {"categories"}
+            and isinstance(custom, list) and len(custom) == 1 and isinstance(custom[0], dict)
+            and set(custom[0]) == {"id", "name"}
+            and custom[0].get("name") in {"Für Entwickler", "For Developers", "For developers"}):
+        try:
+            uuid.UUID(custom[0]["id"])
+        except (ValueError, TypeError, AttributeError):
+            return installed
+        left.pop("categories")
+        right.pop("customCategories")
+    for info in (left, right):
+        if info.get("state") == "ACTIVE":
+            info.pop("state")
+
+    def omit_defaults(info):
+        # Only the observed defaults at their native schema locations are
+        # equivalent to absence. Unknown fields, even empty ones, remain strict.
+        cards = info.get("cards", [])
+        if not isinstance(cards, list):
+            return info
+        for card in cards:
+            if not isinstance(card, dict):
+                continue
+            for key in ("readOnly", "continuous"):
+                if card.get(key) is False:
+                    card.pop(key)
+            macro = card.get("macro")
+            if isinstance(macro, dict) and macro.get("onboardable") is False:
+                macro.pop("onboardable")
+        return info
+
+    if omit_defaults(left) != omit_defaults(right):
+        return installed
+    aligned = copy.deepcopy(installed)
+    infos = aligned["macro_infos"]["macroInfos"]
+    infos[infos.index(originals[0])] = copy.deepcopy(natives[0])
+    return aligned
+
+
 def _ring_card() -> dict:
     return {"id": "card_global_presets_show_radial_menu", "name": "ASSIGNMENT_NAME_SHOW_RADIAL_MENU",
             "attribute": "MACRO_PLAYBACK", "readOnly": True,

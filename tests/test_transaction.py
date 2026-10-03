@@ -1,3 +1,4 @@
+import copy
 import json
 import sqlite3
 import tempfile
@@ -36,6 +37,25 @@ class TransactionTests(unittest.TestCase):
     def plan_for_database(self, path, desired):
         row_id, before, _ = tx.read_database(path)
         return tx.DatabaseChange(path, row_id, before, tx.encode_json(desired))
+
+    def native_voice_fixture(self):
+        asset = Path(__file__).resolve().parents[1] / "assets" / "Smart-Actions" / "07-Codex-Neuer-Sprachchat.json"
+        installed = json.loads(asset.read_bytes())
+        normalized = copy.deepcopy(installed)
+        # Observed native protobuf JSON serialization omits these defaults and
+        # migrates the legacy developer category to a named custom category.
+        normalized.pop("state")
+        normalized.pop("categories")
+        normalized["customCategories"] = {"categories": [
+            {"id": "11111111-1111-1111-1111-111111111111", "name": "Für Entwickler"}]}
+        for card in normalized["cards"]:
+            if card.get("readOnly") is False:
+                card.pop("readOnly")
+            if card.get("continuous") is False:
+                card.pop("continuous")
+            if card["macro"].get("onboardable") is False:
+                card["macro"].pop("onboardable")
+        return installed, normalized
 
     def test_backup_includes_uncheckpointed_wal_frames(self):
         path, writer = self.make_database({"state": "checkpointed"}, wal=True)
@@ -242,6 +262,83 @@ class TransactionTests(unittest.TestCase):
         with self.assertRaises(tx.ConflictError):
             tx.apply(tx.Plan(database=change, additional_databases=[self.plan_for_database(other, {"managed": 1})]), self.backups)
         self.assertFalse(self.backups.exists())
+
+    def test_restore_accepts_native_normalized_owned_macro_info(self):
+        installed, normalized = self.native_voice_fixture()
+        original = {"macro_infos": {}}
+        desired = {"macro_infos": {"macroInfos": [installed]}}
+        macros, writer = self.make_database(original, name="macros.db")
+        backup = tx.apply(tx.Plan(additional_databases=[self.plan_for_database(macros, desired)]), self.backups)
+        current = {"macro_infos": {"macroInfos": [normalized]}}
+        writer.execute("UPDATE data SET file=? WHERE _id=1", (tx.encode_json(current),))
+        writer.commit()
+        restore = tx.restore_plan(backup)
+        self.assertEqual(len(restore.additional_databases), 1)
+        self.assertEqual(json.loads(restore.additional_databases[0].after), original)
+        tx.apply(restore, self.backups)
+        self.assertEqual(self.database_value(macros), original)
+
+    def test_restore_normalized_macro_preserves_later_foreign_macro_with_previously_missing_list(self):
+        installed, normalized = self.native_voice_fixture()
+        original = {"macro_infos": {}}
+        desired = {"macro_infos": {"macroInfos": [installed]}}
+        macros, writer = self.make_database(original, name="macros.db")
+        backup = tx.apply(tx.Plan(additional_databases=[self.plan_for_database(macros, desired)]), self.backups)
+        foreign = copy.deepcopy(normalized)
+        foreign["id"] = "22222222-2222-2222-2222-222222222222"
+        foreign["name"] = "Independent later macro"
+        foreign["description"] = "Added after installation"
+        current = {"macro_infos": {"macroInfos": [normalized, foreign]}, "independent_later": True}
+        writer.execute("UPDATE data SET file=? WHERE _id=1", (tx.encode_json(current),))
+        writer.commit()
+        expected = {"macro_infos": {"macroInfos": [foreign]}, "independent_later": True}
+        restore = tx.restore_plan(backup)
+        self.assertEqual(json.loads(restore.additional_databases[0].after), expected)
+        tx.apply(restore, self.backups)
+        self.assertEqual(self.database_value(macros), expected)
+        self.assertFalse(tx.restore_plan(backup).changed)
+
+    def test_restore_normalized_macro_refuses_actual_managed_edits(self):
+        installed, normalized = self.native_voice_fixture()
+        original = {"macro_infos": {}}
+        desired = {"macro_infos": {"macroInfos": [installed]}}
+        macros, writer = self.make_database(original, name="macros.db")
+        backup = tx.apply(tx.Plan(additional_databases=[self.plan_for_database(macros, desired)]), self.backups)
+        mutations = []
+        changed = copy.deepcopy(normalized)
+        changed["lastEditTimestamp"] = str(int(changed["lastEditTimestamp"]) + 1)
+        mutations.append(("timestamp", changed))
+        changed = copy.deepcopy(normalized)
+        changed["name"] = "User renamed this macro"
+        mutations.append(("name", changed))
+        changed = copy.deepcopy(normalized)
+        changed["description"] = "User changed the description"
+        mutations.append(("description", changed))
+        changed = copy.deepcopy(normalized)
+        changed["cards"][0]["macro"]["keystroke"]["code"] = 7
+        mutations.append(("keycode", changed))
+        changed = copy.deepcopy(normalized)
+        changed["customCategories"]["categories"][0]["name"] = "User category"
+        mutations.append(("category label", changed))
+        changed = copy.deepcopy(normalized)
+        changed["customCategories"]["categories"].append({
+            "id": "33333333-3333-3333-3333-333333333333", "name": "User category"})
+        mutations.append(("additional category", changed))
+        changed = copy.deepcopy(normalized)
+        changed["unknownMacroInfoField"] = 0
+        mutations.append(("unknown zero-valued MacroInfo field", changed))
+        changed = copy.deepcopy(normalized)
+        changed["customCategories"]["unknownCategoryField"] = False
+        mutations.append(("unknown false-valued category field", changed))
+        for label, changed in mutations:
+            with self.subTest(edit=label):
+                current = {"macro_infos": {"macroInfos": [changed]}}
+                writer.execute("UPDATE data SET file=? WHERE _id=1", (tx.encode_json(current),))
+                writer.commit()
+                with self.assertRaises(tx.ConflictError):
+                    tx.restore_plan(backup)
+                self.assertEqual(self.database_value(macros), current,
+                                 "Restore preparation must preserve edited managed macros.")
 
     def test_file_compare_and_swap_rejects_change_since_preview(self):
         path = self.root / "keybindings.json"

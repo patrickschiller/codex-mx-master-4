@@ -2,7 +2,7 @@
 
 Configure a Logitech MX Master 4 for the Codex desktop app on macOS in one command, with a preview, private backups and scoped restoration.
 
-**Experimental v0.1.1.** Uses the locally verified Options+ and Logi Plugin Service file formats. This is a community tool, not an official Logitech or OpenAI installer. The native ring archive has been imported successfully through Options+. The repaired installation has been applied on a Mac, and native persistence and a subsequent unchanged preview have been verified. Physical mouse events and voice/dictation activation still require a user check after restarting Codex.
+**Experimental v0.1.2.** Uses the locally verified Options+ and Logi Plugin Service file formats. This is a community tool, not an official Logitech or OpenAI installer. The native ring archive has been imported successfully through Options+. The repaired installation has been applied on a Mac, and native persistence and a subsequent unchanged preview have been verified. Physical mouse events and voice/dictation activation still require a user check after restarting Codex.
 
 [Deutsche Anleitung](docs/installation-de.md)
 
@@ -72,7 +72,7 @@ The installer prints the private backup directory under `~/Library/Application S
 ./codex-mx restore --backup '/absolute/path/printed/by/the/installer' --apply --restart-logitech
 ```
 
-Restoration reverses the managed changes while preserving independent later edits. If you edited one of the managed values after installation, it stops and reports a conflict before writing. It also makes a backup of the restoration itself. Full SQLite snapshots of `settings.db` and `macros.db` are retained for manual recovery; normal restoration merges their JSON documents. Both databases are locked and checked before changes. Their separate WAL commits cannot be crash-atomic; caught failures compensate only our own committed values and preserve concurrent changes. Backups contain local settings and should stay private.
+Restoration reverses the managed changes while preserving independent later edits. It recognizes the observed native Smart Action normalization after Options+ starts, including omitted false defaults and the developer-category migration. Unrecognized changes still stop restoration. If you edited one of the managed values after installation, it stops and reports a conflict before writing. It also makes a backup of the restoration itself. Full SQLite snapshots of `settings.db` and `macros.db` are retained for manual recovery; normal restoration merges their JSON documents. Both databases are locked and checked before changes. Their separate WAL commits cannot be crash-atomic; caught failures compensate only our own committed values and preserve concurrent changes. Backups contain local settings and should stay private.
 
 Restoration uses the same version checks. If your applications have since updated to an unverified version, automatic restoration stops too; keep the backup until that version is verified or use it for careful manual recovery.
 
